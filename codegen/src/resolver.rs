@@ -21,6 +21,12 @@ pub enum Error {
         #[source]
         source: serde_json::Error,
     },
+    #[error("component at '{reference}' is a `{found}`, expected `{expected}`")]
+    TypeMismatch {
+        reference: String,
+        found: &'static str,
+        expected: &'static str,
+    },
 }
 
 #[derive(Debug)]
@@ -114,10 +120,11 @@ impl<'doc> ReferenceResolver<'doc> {
                 // <https://docs.rs/polonius-the-crab/latest/polonius_the_crab/#explanation>
                 if self.cache.contains_key(reference) {
                     let cached = self.cache.get(reference).unwrap();
-                    // TODO: Needs its own error variant.
-                    cached
-                        .try_into()
-                        .map_err(|_| Error::InvalidReference(reference.clone()))
+                    cached.try_into().map_err(|_| Error::TypeMismatch {
+                        reference: reference.clone(),
+                        found: cached.kind(),
+                        expected: std::any::type_name::<O>(),
+                    })
                 } else {
                     let object = Self::resolve_::<O>(reference, &self.documents)?;
                     self.cache.insert(reference.clone(), object.into());
@@ -154,6 +161,23 @@ impl<'doc> ReferenceResolver<'doc> {
             reference: reference.to_owned(),
             source: e,
         })
+    }
+}
+
+impl Component<'_> {
+    fn kind(&self) -> &'static str {
+        match self {
+            Component::Schema(_) => "Schema",
+            Component::Response(_) => "Response",
+            Component::Parameter(_) => "Parameter",
+            Component::Example(_) => "Example",
+            Component::RequestBody(_) => "RequestBody",
+            Component::Header(_) => "Header",
+            Component::SecurityScheme(_) => "SecurityScheme",
+            Component::Link(_) => "Link",
+            Component::Callback(_) => "Callback",
+            Component::Other(_) => "Other",
+        }
     }
 }
 
