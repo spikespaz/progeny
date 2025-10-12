@@ -118,18 +118,21 @@ impl<'doc> ReferenceResolver<'doc> {
         match ref_or {
             ReferenceOr::Reference { reference } => {
                 // <https://docs.rs/polonius-the-crab/latest/polonius_the_crab/#explanation>
-                if self.cache.contains_key(reference) {
-                    let cached = self.cache.get(reference).unwrap();
-                    cached.try_into().map_err(|_| Error::TypeMismatch {
-                        reference: reference.clone(),
-                        found: cached.kind(),
-                        expected: std::any::type_name::<O>(),
-                    })
-                } else {
-                    let object = Self::resolve_::<O>(reference, &self.documents)?;
-                    self.cache.insert(reference.clone(), object.into());
-                    let cached = self.cache.get(reference).unwrap();
-                    Ok(cached.try_into().unwrap_or_else(|_| unreachable!()))
+                use std::collections::hash_map::Entry;
+                match self.cache.entry(reference.clone()) {
+                    Entry::Occupied(entry) => {
+                        let cached = &*entry.into_mut();
+                        cached.try_into().map_err(|_| Error::TypeMismatch {
+                            reference: reference.clone(),
+                            found: cached.kind(),
+                            expected: std::any::type_name::<O>(),
+                        })
+                    }
+                    Entry::Vacant(slot) => {
+                        let object = Self::resolve_::<O>(reference, &self.documents)?;
+                        let cached = &*slot.insert(object.into());
+                        Ok(cached.try_into().unwrap_or_else(|_| unreachable!()))
+                    }
                 }
             }
             ReferenceOr::Item(item) => Ok(item),
