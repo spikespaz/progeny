@@ -11,3 +11,6 @@ edition.workspace = true
 proc-macro = true
 
 [dependencies]
+
+[lints]
+workspace = true

@@ -13,6 +13,9 @@ edition = "2024"
 [workspace.dependencies]
 progeny-codegen = { path = "./codegen" }
 
+[workspace.lints.rust]
+unused_crate_dependencies = "forbid"
+
 [package]
 name = "progeny"
 version.workspace = true
@@ -23,5 +26,8 @@ license.workspace = true
 edition.workspace = true
 
 [dependencies]
-progeny-codegen.workspace = true
+# progeny-codegen.workspace = true
 progeny-macros = { path = "./macros" }
+
+[lints]
+workspace = true
