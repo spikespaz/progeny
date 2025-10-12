@@ -1,0 +1,27 @@
+[workspace]
+members = ["codegen", "macros"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+authors = ["Jacob Birkett <jacob@birkett.dev>"]
+homepage = "https://github.com/spikespaz/progeny"
+repository = "https://github.com/spikespaz/progeny"
+license = "MIT"
+edition = "2024"
+
+[workspace.dependencies]
+progeny-codegen = { path = "./codegen" }
+
+[package]
+name = "progeny"
+version.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+edition.workspace = true
+
+[dependencies]
+progeny-codegen.workspace = true
+progeny-macros = { path = "./macros" }
