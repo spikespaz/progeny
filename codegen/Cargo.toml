@@ -8,6 +8,10 @@ license.workspace = true
 edition.workspace = true
 
 [dependencies]
+anyhow = "1.0"
+openapiv3 = "2.2.0"
+proc-macro2 = "1.0"
+quote = "1.0"
 
 [lints]
 workspace = true
