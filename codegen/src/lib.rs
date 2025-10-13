@@ -1,9 +1,11 @@
+mod into_cow;
 mod resolver;
 
 use openapiv3::OpenAPI;
 use proc_macro2::TokenStream;
 use quote::quote;
 
+pub(crate) use into_cow::IntoCow;
 pub(crate) use resolver::ReferenceResolver;
 
 #[derive(Debug, Default)]
