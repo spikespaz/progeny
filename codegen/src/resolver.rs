@@ -9,8 +9,6 @@ use crate::IntoCow;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("reference '{0}' is invalid")]
-    InvalidReference(String),
     #[error("no document found for reference '{0}'")]
     DocumentNotFound(String),
     #[error("no component found for reference '{0}'")]
@@ -162,7 +160,7 @@ impl<'doc> ReferenceResolver<'doc> {
 
         let component = document
             .pointer(pointer)
-            .ok_or_else(|| Error::InvalidReference(reference.to_owned()))?;
+            .ok_or_else(|| Error::ComponentNotFound(reference.to_owned()))?;
 
         serde_json::from_value(component.clone()).map_err(|e| Error::Deserialize {
             reference: reference.to_owned(),
