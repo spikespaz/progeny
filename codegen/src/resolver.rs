@@ -121,7 +121,11 @@ impl<'doc> ReferenceResolver<'doc> {
                 use std::collections::hash_map::Entry;
                 match self.cache.entry(reference.clone()) {
                     Entry::Occupied(entry) => {
-                        let cached = &*entry.into_mut();
+                        let cached =
+                            &*entry.into_mut().promote().map_err(|e| Error::Deserialize {
+                                reference: reference.clone(),
+                                source: e,
+                            })?;
                         cached.try_into().map_err(|_| Error::TypeMismatch {
                             reference: reference.clone(),
                             found: cached.kind(),
@@ -181,6 +185,23 @@ impl Component<'_> {
             Component::Callback(_) => "Callback",
             Component::Other(_) => "Other",
         }
+    }
+
+    fn promote<O>(&mut self) -> serde_json::Result<&mut Self>
+    where
+        O: serde::de::DeserializeOwned,
+        Self: From<O>,
+    {
+        if let Self::Other(raw) = self {
+            let value = match raw {
+                Cow::Borrowed(v) => v.clone(),
+                Cow::Owned(v) => v.take(),
+            };
+            let object = serde_json::from_value::<O>(value)?;
+            *self = object.into();
+        }
+
+        Ok(self)
     }
 }
 
