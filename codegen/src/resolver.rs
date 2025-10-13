@@ -5,6 +5,8 @@ use std::collections::HashMap;
 
 use openapiv3::{OpenAPI, ReferenceOr};
 
+use crate::IntoCow;
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("reference '{0}' is invalid")]
@@ -24,18 +26,25 @@ pub enum Error {
 #[derive(Debug)]
 pub struct ReferenceResolver<'doc> {
     root: &'doc OpenAPI,
-    documents: HashMap<String, serde_json::Value>,
+    documents: HashMap<String, Cow<'doc, serde_json::Value>>,
 }
 
 impl<'doc> ReferenceResolver<'doc> {
     pub fn new(root: &'doc OpenAPI) -> Self {
-        let root_entry = ("".to_string(), serde_json::to_value(root).unwrap());
+        let root_entry = (
+            "".to_string(),
+            Cow::Owned(serde_json::to_value(root).unwrap()),
+        );
         let documents = HashMap::from_iter([root_entry]);
         Self { root, documents }
     }
 
-    pub fn add_document(&mut self, url: impl Into<String>, document: serde_json::Value) {
-        self.documents.insert(url.into(), document);
+    pub fn add_document(
+        &mut self,
+        url: impl Into<String>,
+        document: impl IntoCow<'doc, serde_json::Value>,
+    ) {
+        self.documents.insert(url.into(), document.into_cow());
     }
 
     // TODO: Cache and return references to owned values where possible.
