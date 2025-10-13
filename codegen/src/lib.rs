@@ -6,8 +6,28 @@ use quote::quote;
 
 pub(crate) use resolver::ReferenceResolver;
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct Settings {}
+
+#[derive(Debug)]
+pub struct Generator<'a> {
+    #[expect(unused)]
+    spec: &'a OpenAPI,
+    #[expect(unused)]
+    settings: &'a Settings,
+    #[expect(unused)]
+    resolver: ReferenceResolver<'a>,
+}
+
+impl<'a> Generator<'a> {
+    pub fn new(spec: &'a OpenAPI, settings: &'a Settings) -> Self {
+        Self {
+            spec,
+            settings,
+            resolver: ReferenceResolver::new(spec),
+        }
+    }
+}
 
 pub fn generate_openapi(_spec: &OpenAPI, _settings: &Settings) -> anyhow::Result<TokenStream> {
     Ok(quote! {})
