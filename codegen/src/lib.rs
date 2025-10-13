@@ -17,7 +17,6 @@ pub struct Generator<'a> {
     spec: &'a OpenAPI,
     #[expect(unused)]
     settings: &'a Settings,
-    #[expect(unused)]
     resolver: ReferenceResolver<'a>,
 }
 
@@ -28,6 +27,14 @@ impl<'a> Generator<'a> {
             settings,
             resolver: ReferenceResolver::new(spec),
         }
+    }
+
+    pub fn add_document(
+        &mut self,
+        url: impl Into<String>,
+        document: impl IntoCow<'a, serde_json::Value>,
+    ) {
+        self.resolver.add_document(url, document);
     }
 }
 
