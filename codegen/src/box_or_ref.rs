@@ -158,3 +158,12 @@ impl<'a, T: Sized + Clone> From<Cow<'a, T>> for BoxOrRef<'a, T> {
         }
     }
 }
+
+impl<'a, T: Sized + Clone> From<BoxOrRef<'a, T>> for Cow<'a, T> {
+    fn from(other: BoxOrRef<'a, T>) -> Self {
+        match other {
+            Borrowed(borrowed) => Cow::Borrowed(borrowed),
+            Owned(owned) => Cow::Owned(*owned),
+        }
+    }
+}
