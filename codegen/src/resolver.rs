@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use openapiv3::{Components, OpenAPI, ReferenceOr};
 
 use crate::IntoCow;
+use crate::box_or_ref::BoxOrRef;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -36,16 +37,16 @@ pub struct ReferenceResolver<'doc> {
 
 #[derive(Debug)]
 pub enum Component<'a> {
-    Schema(Cow<'a, openapiv3::Schema>),
-    Response(Cow<'a, openapiv3::Response>),
-    Parameter(Cow<'a, openapiv3::Parameter>),
-    Example(Cow<'a, openapiv3::Example>),
-    RequestBody(Cow<'a, openapiv3::RequestBody>),
-    Header(Cow<'a, openapiv3::Header>),
-    SecurityScheme(Cow<'a, openapiv3::SecurityScheme>),
-    Link(Cow<'a, openapiv3::Link>),
-    Callback(Cow<'a, openapiv3::Callback>),
-    Other(Cow<'a, serde_json::Value>),
+    Schema(BoxOrRef<'a, openapiv3::Schema>),
+    Response(BoxOrRef<'a, openapiv3::Response>),
+    Parameter(BoxOrRef<'a, openapiv3::Parameter>),
+    Example(BoxOrRef<'a, openapiv3::Example>),
+    RequestBody(BoxOrRef<'a, openapiv3::RequestBody>),
+    Header(BoxOrRef<'a, openapiv3::Header>),
+    SecurityScheme(BoxOrRef<'a, openapiv3::SecurityScheme>),
+    Link(BoxOrRef<'a, openapiv3::Link>),
+    Callback(BoxOrRef<'a, openapiv3::Callback>),
+    Other(BoxOrRef<'a, serde_json::Value>),
 }
 
 impl<'doc> ReferenceResolver<'doc> {
@@ -80,9 +81,9 @@ impl<'doc> ReferenceResolver<'doc> {
                 components.$field.iter().filter_map(|(name, ref_or)| {
                     let object = match ref_or {
                         ReferenceOr::Reference { reference } => {
-                            Cow::Owned(Self::resolve_(reference, &self.documents).ok()?)
+                            BoxOrRef::box_owned(Self::resolve_(reference, &self.documents).ok()?)
                         }
-                        ReferenceOr::Item(object) => Cow::Borrowed(object),
+                        ReferenceOr::Item(object) => BoxOrRef::Borrowed(object),
                     };
                     Some((
                         format!("#/components/{}/{}", $ref_infix, name),
@@ -192,8 +193,8 @@ impl Component<'_> {
     {
         if let Self::Other(raw) = self {
             let value = match raw {
-                Cow::Borrowed(v) => v.clone(),
-                Cow::Owned(v) => v.take(),
+                BoxOrRef::Borrowed(v) => v.clone(),
+                BoxOrRef::Owned(v) => v.take(),
             };
             let object = serde_json::from_value::<O>(value)?;
             *self = object.into();
@@ -207,19 +208,19 @@ macro_rules! impl_component_variant {
     ($Variant:ident <-> $Type:ty) => {
         impl From<$Type> for Component<'_> {
             fn from(other: $Type) -> Self {
-                Self::$Variant(Cow::Owned(other))
+                Self::$Variant(other.into())
             }
         }
 
         impl<'a> From<&'a $Type> for Component<'a> {
             fn from(other: &'a $Type) -> Self {
-                Self::$Variant(Cow::Borrowed(other))
+                Self::$Variant(other.into())
             }
         }
 
-        impl<'a> From<Cow<'a, $Type>> for Component<'a> {
-            fn from(other: Cow<'a, $Type>) -> Self {
-                Self::$Variant(other)
+        impl<'a> From<BoxOrRef<'a, $Type>> for Component<'a> {
+            fn from(other: BoxOrRef<'a, $Type>) -> Self {
+                Self::$Variant(other.into())
             }
         }
 
@@ -228,18 +229,18 @@ macro_rules! impl_component_variant {
 
             fn try_from(other: &'c Component<'_>) -> Result<Self, Self::Error> {
                 match other {
-                    Component::$Variant(cow) => Ok(cow),
+                    Component::$Variant(v) => Ok(v),
                     _ => Err(()),
                 }
             }
         }
 
-        impl<'a> TryFrom<Component<'a>> for Cow<'a, $Type> {
+        impl<'a> TryFrom<Component<'a>> for BoxOrRef<'a, $Type> {
             type Error = ();
 
             fn try_from(other: Component<'a>) -> Result<Self, Self::Error> {
                 match other {
-                    Component::$Variant(cow) => Ok(cow),
+                    Component::$Variant(v) => Ok(v),
                     _ => Err(()),
                 }
             }
