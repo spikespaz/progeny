@@ -171,3 +171,21 @@ impl<'a, T: Sized + Clone> From<BoxOrRef<'a, T>> for Cow<'a, T> {
         }
     }
 }
+
+impl<'a, T: ?Sized> From<&'a T> for BoxOrRef<'a, T> {
+    fn from(other: &'a T) -> Self {
+        Borrowed(other)
+    }
+}
+
+impl<T: Sized> From<T> for BoxOrRef<'_, T> {
+    fn from(other: T) -> Self {
+        Owned(Box::new(other))
+    }
+}
+
+impl<T: ?Sized> From<Box<T>> for BoxOrRef<'_, T> {
+    fn from(other: Box<T>) -> Self {
+        Owned(other)
+    }
+}
