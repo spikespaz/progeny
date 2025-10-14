@@ -46,6 +46,11 @@ pub enum Component<'a> {
     SecurityScheme(BoxOrRef<'a, openapiv3::SecurityScheme>),
     Link(BoxOrRef<'a, openapiv3::Link>),
     Callback(BoxOrRef<'a, openapiv3::Callback>),
+    /// "Path Item Object" is not technically a recognized component in OAS 3.0.x,
+    /// but the specification still allows for references to them.
+    /// This type will be a component in OAS 3.1.0, which warrants an exception presently.
+    PathItem(BoxOrRef<'a, openapiv3::PathItem>),
+    /// The name `Other` might be misleading, this is just yet deserialized.
     Other(BoxOrRef<'a, serde_json::Value>),
 }
 
@@ -182,6 +187,7 @@ impl Component<'_> {
             Component::SecurityScheme(_) => "SecurityScheme",
             Component::Link(_) => "Link",
             Component::Callback(_) => "Callback",
+            Component::PathItem(_) => "PathItem",
             Component::Other(_) => "Other",
         }
     }
@@ -257,4 +263,5 @@ impl_component_variant!(Header <-> openapiv3::Header);
 impl_component_variant!(SecurityScheme <-> openapiv3::SecurityScheme);
 impl_component_variant!(Link <-> openapiv3::Link);
 impl_component_variant!(Callback <-> openapiv3::Callback);
+impl_component_variant!(PathItem <-> openapiv3::PathItem);
 impl_component_variant!(Other <-> serde_json::Value);
