@@ -23,6 +23,10 @@ impl<T: ?Sized> BoxOrRef<'_, T> {
 }
 
 impl<T: Sized + Clone> BoxOrRef<'_, T> {
+    pub fn box_owned(owned: T) -> Self {
+        Self::Owned(Box::new(owned))
+    }
+
     pub fn to_mut(&mut self) -> &mut T {
         match self {
             Borrowed(borrow) => {
