@@ -3,6 +3,7 @@ use core::cmp::Ordering;
 use core::fmt;
 use core::hash::{Hash, Hasher};
 use core::ops::Deref;
+use std::borrow::Cow;
 
 use self::BoxOrRef::{Borrowed, Owned};
 
@@ -145,6 +146,15 @@ impl<T: ?Sized + fmt::Display> fmt::Display for BoxOrRef<'_, T> {
         match *self {
             Borrowed(borrow) => fmt::Display::fmt(borrow, f),
             Owned(ref boxed) => fmt::Display::fmt(boxed, f),
+        }
+    }
+}
+
+impl<'a, T: Sized + Clone> From<Cow<'a, T>> for BoxOrRef<'a, T> {
+    fn from(other: Cow<'a, T>) -> Self {
+        match other {
+            Cow::Borrowed(borrow) => Borrowed(borrow),
+            Cow::Owned(owned) => Owned(Box::new(owned)),
         }
     }
 }
