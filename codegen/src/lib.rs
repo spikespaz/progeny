@@ -11,12 +11,14 @@ pub(crate) use into_cow::IntoCow;
 pub(crate) use resolver::ReferenceResolver;
 
 #[derive(Debug, Default)]
-pub struct Settings {}
+pub struct Settings {
+    /// Whether each operation will be prefixed by its HTTP method.
+    pub prefix_operations: bool,
+}
 
 #[derive(Debug)]
 pub struct Generator<'a> {
     spec: &'a OpenAPI,
-    #[expect(unused)]
     settings: &'a Settings,
     resolver: ReferenceResolver<'a>,
 }
@@ -44,11 +46,16 @@ impl<'a> Generator<'a> {
         for (template, path) in &self.spec.paths.paths {
             let path = self.resolver.resolve(path)?;
             for (method, op) in path.iter() {
-                let fn_suffix = match &op.operation_id {
-                    Some(op_id) => op_id.to_snake_case(),
-                    None => template.to_snake_case(),
+                let fn_name = {
+                    let mut name = match &op.operation_id {
+                        Some(op_id) => op_id.to_snake_case(),
+                        None => template.to_snake_case(),
+                    };
+                    if self.settings.prefix_operations {
+                        name = format!("{method}_{name}")
+                    }
+                    format_ident!("{name}")
                 };
-                let fn_name = format_ident!("{method}_{fn_suffix}");
                 tokens.extend(quote! {
                     pub fn #fn_name() {
                         todo!()
