@@ -119,12 +119,15 @@ impl<'doc> ReferenceResolver<'doc> {
         );
     }
 
-    pub fn resolve<'a, O>(&mut self, ref_or: &'a ReferenceOr<O>) -> Result<Handle<'a, O>, Error>
+    pub fn resolve<'item, O>(
+        &mut self,
+        ref_or: &'item ReferenceOr<O>,
+    ) -> Result<Handle<'item, O>, Error>
     where
-        'doc: 'a,
+        'doc: 'item,
         O: serde::de::DeserializeOwned,
         Component<'doc>: From<O>,
-        for<'r> Handle<'r, O>: TryFrom<Component<'r>>,
+        Handle<'item, O>: TryFrom<Component<'item>>,
     {
         match ref_or {
             ReferenceOr::Reference { reference } => {
