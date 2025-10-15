@@ -1,10 +1,11 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::ops::Deref;
+use std::rc::Rc;
 
 use openapiv3::{Components, OpenAPI, ReferenceOr};
 
 use crate::IntoCow;
-use crate::box_or_ref::BoxOrRef;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -34,23 +35,29 @@ pub struct ReferenceResolver<'doc> {
     cache: HashMap<String, Component<'doc>>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
+pub enum Handle<'a, T> {
+    Borrowed(&'a T),
+    Shared(Rc<T>),
+}
+
+#[derive(Clone, Debug)]
 pub enum Component<'a> {
-    Schema(BoxOrRef<'a, openapiv3::Schema>),
-    Response(BoxOrRef<'a, openapiv3::Response>),
-    Parameter(BoxOrRef<'a, openapiv3::Parameter>),
-    Example(BoxOrRef<'a, openapiv3::Example>),
-    RequestBody(BoxOrRef<'a, openapiv3::RequestBody>),
-    Header(BoxOrRef<'a, openapiv3::Header>),
-    SecurityScheme(BoxOrRef<'a, openapiv3::SecurityScheme>),
-    Link(BoxOrRef<'a, openapiv3::Link>),
-    Callback(BoxOrRef<'a, openapiv3::Callback>),
+    Schema(Handle<'a, openapiv3::Schema>),
+    Response(Handle<'a, openapiv3::Response>),
+    Parameter(Handle<'a, openapiv3::Parameter>),
+    Example(Handle<'a, openapiv3::Example>),
+    RequestBody(Handle<'a, openapiv3::RequestBody>),
+    Header(Handle<'a, openapiv3::Header>),
+    SecurityScheme(Handle<'a, openapiv3::SecurityScheme>),
+    Link(Handle<'a, openapiv3::Link>),
+    Callback(Handle<'a, openapiv3::Callback>),
     /// "Path Item Object" is not technically a recognized component in OAS 3.0.x,
     /// but the specification still allows for references to them.
     /// This type will be a component in OAS 3.1.0, which warrants an exception presently.
-    PathItem(BoxOrRef<'a, openapiv3::PathItem>),
+    PathItem(Handle<'a, openapiv3::PathItem>),
     /// The name `Other` might be misleading, this is just yet deserialized.
-    Other(BoxOrRef<'a, serde_json::Value>),
+    Other(Handle<'a, serde_json::Value>),
 }
 
 impl<'doc> ReferenceResolver<'doc> {
@@ -83,40 +90,41 @@ impl<'doc> ReferenceResolver<'doc> {
         macro_rules! cache {
             ($field:ident, $ref_infix:literal) => {
                 components.$field.iter().filter_map(|(name, ref_or)| {
-                    let object = match ref_or {
+                    let handle = match ref_or {
                         ReferenceOr::Reference { reference } => {
-                            BoxOrRef::box_owned(Self::resolve_(reference, &self.documents).ok()?)
+                            let object = Self::resolve_(reference, &self.documents).ok()?;
+                            Handle::Shared(Rc::new(object))
                         }
-                        ReferenceOr::Item(object) => BoxOrRef::Borrowed(object),
+                        ReferenceOr::Item(object) => Handle::Borrowed(object),
                     };
                     Some((
                         format!("#/components/{}/{}", $ref_infix, name),
-                        object.into(),
+                        Component::from(handle),
                     ))
                 })
             };
         }
 
-        let entries = std::iter::empty()
-            .chain(cache!(schemas, "schemas"))
-            .chain(cache!(responses, "responses"))
-            .chain(cache!(parameters, "parameters"))
-            .chain(cache!(examples, "examples"))
-            .chain(cache!(request_bodies, "requestBodies"))
-            .chain(cache!(headers, "headers"))
-            .chain(cache!(security_schemes, "securitySchemes"))
-            .chain(cache!(links, "links"))
-            .chain(cache!(callbacks, "callbacks"))
-            .collect::<Vec<_>>();
-
-        self.cache.extend(entries);
+        self.cache.extend(
+            std::iter::empty()
+                .chain(cache!(schemas, "schemas"))
+                .chain(cache!(responses, "responses"))
+                .chain(cache!(parameters, "parameters"))
+                .chain(cache!(examples, "examples"))
+                .chain(cache!(request_bodies, "requestBodies"))
+                .chain(cache!(headers, "headers"))
+                .chain(cache!(security_schemes, "securitySchemes"))
+                .chain(cache!(links, "links"))
+                .chain(cache!(callbacks, "callbacks")),
+        );
     }
 
-    pub fn resolve<'a, O>(&'a mut self, ref_or: &'a ReferenceOr<O>) -> Result<&'a O, Error>
+    pub fn resolve<'a, O>(&mut self, ref_or: &'a ReferenceOr<O>) -> Result<Handle<'a, O>, Error>
     where
+        'doc: 'a,
         O: serde::de::DeserializeOwned,
-        &'a O: TryFrom<&'a Component<'doc>>,
         Component<'doc>: From<O>,
+        for<'r> Handle<'r, O>: TryFrom<Component<'r>>,
     {
         match ref_or {
             ReferenceOr::Reference { reference } => {
@@ -125,26 +133,26 @@ impl<'doc> ReferenceResolver<'doc> {
                 let cached = match self.cache.entry(reference.clone()) {
                     Entry::Occupied(entry) => {
                         let cached = entry.into_mut();
-                        &*cached.promote().map_err(|e| Error::Deserialize {
+                        cached.promote().map_err(|e| Error::Deserialize {
                             reference: reference.clone(),
                             source: e,
                         })?
                     }
                     Entry::Vacant(slot) => {
-                        let object = Self::resolve_::<O>(reference, &self.documents)?;
-                        &*slot.insert(object.into())
+                        let object = Self::resolve_(reference, &self.documents)?;
+                        slot.insert(Component::from(object))
                     }
                 };
 
-                let object = cached.try_into().map_err(|_| Error::TypeMismatch {
+                let handle = cached.clone().handle().ok_or_else(|| Error::TypeMismatch {
                     reference: reference.clone(),
                     found: cached.kind(),
                     expected: std::any::type_name::<O>(),
                 })?;
 
-                Ok(object)
+                Ok(handle)
             }
-            ReferenceOr::Item(object) => Ok(object),
+            ReferenceOr::Item(object) => Ok(Handle::from(object)),
         }
     }
 
@@ -176,7 +184,30 @@ impl<'doc> ReferenceResolver<'doc> {
     }
 }
 
-impl Component<'_> {
+impl<T> Deref for Handle<'_, T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        match *self {
+            Handle::Borrowed(borrow) => borrow,
+            Handle::Shared(ref rc) => rc.as_ref(),
+        }
+    }
+}
+
+impl<T> From<T> for Handle<'_, T> {
+    fn from(other: T) -> Self {
+        Handle::Shared(Rc::new(other))
+    }
+}
+
+impl<'a, T> From<&'a T> for Handle<'a, T> {
+    fn from(other: &'a T) -> Self {
+        Handle::Borrowed(other)
+    }
+}
+
+impl<'a> Component<'a> {
     fn kind(&self) -> &'static str {
         match self {
             Component::Schema(_) => "Schema",
@@ -193,18 +224,21 @@ impl Component<'_> {
         }
     }
 
+    fn handle<O>(self) -> Option<Handle<'a, O>>
+    where
+        Handle<'a, O>: TryFrom<Self>,
+    {
+        Handle::try_from(self).ok()
+    }
+
     fn promote<O>(&mut self) -> serde_json::Result<&mut Self>
     where
         O: serde::de::DeserializeOwned,
         Self: From<O>,
     {
-        if let Self::Other(raw) = self {
-            let value = match raw {
-                BoxOrRef::Borrowed(v) => v.clone(),
-                BoxOrRef::Owned(v) => v.take(),
-            };
-            let object = serde_json::from_value::<O>(value)?;
-            *self = object.into();
+        if let Self::Other(handle) = &self {
+            let object = serde_json::from_value(handle.deref().clone())?;
+            *self = Self::from(object);
         }
 
         Ok(self)
@@ -215,39 +249,28 @@ macro_rules! impl_component_variant {
     ($Variant:ident <-> $Type:ty) => {
         impl From<$Type> for Component<'_> {
             fn from(other: $Type) -> Self {
-                Self::$Variant(other.into())
+                Self::$Variant(Handle::from(other))
             }
         }
 
         impl<'a> From<&'a $Type> for Component<'a> {
             fn from(other: &'a $Type) -> Self {
-                Self::$Variant(other.into())
+                Self::$Variant(Handle::from(other))
             }
         }
 
-        impl<'a> From<BoxOrRef<'a, $Type>> for Component<'a> {
-            fn from(other: BoxOrRef<'a, $Type>) -> Self {
-                Self::$Variant(other.into())
+        impl<'a> From<Handle<'a, $Type>> for Component<'a> {
+            fn from(other: Handle<'a, $Type>) -> Self {
+                Self::$Variant(other)
             }
         }
 
-        impl<'c> TryFrom<&'c Component<'_>> for &'c $Type {
-            type Error = ();
-
-            fn try_from(other: &'c Component<'_>) -> Result<Self, Self::Error> {
-                match other {
-                    Component::$Variant(v) => Ok(v),
-                    _ => Err(()),
-                }
-            }
-        }
-
-        impl<'a> TryFrom<Component<'a>> for BoxOrRef<'a, $Type> {
+        impl<'a> TryFrom<Component<'a>> for Handle<'a, $Type> {
             type Error = ();
 
             fn try_from(other: Component<'a>) -> Result<Self, Self::Error> {
                 match other {
-                    Component::$Variant(v) => Ok(v),
+                    Component::$Variant(handle) => Ok(handle.clone()),
                     _ => Err(()),
                 }
             }
