@@ -122,27 +122,29 @@ impl<'doc> ReferenceResolver<'doc> {
             ReferenceOr::Reference { reference } => {
                 // <https://docs.rs/polonius-the-crab/latest/polonius_the_crab/#explanation>
                 use std::collections::hash_map::Entry;
-                match self.cache.entry(reference.clone()) {
+                let cached = match self.cache.entry(reference.clone()) {
                     Entry::Occupied(entry) => {
-                        let cached =
-                            &*entry.into_mut().promote().map_err(|e| Error::Deserialize {
-                                reference: reference.clone(),
-                                source: e,
-                            })?;
-                        cached.try_into().map_err(|_| Error::TypeMismatch {
+                        let cached = entry.into_mut();
+                        &*cached.promote().map_err(|e| Error::Deserialize {
                             reference: reference.clone(),
-                            found: cached.kind(),
-                            expected: std::any::type_name::<O>(),
-                        })
+                            source: e,
+                        })?
                     }
                     Entry::Vacant(slot) => {
                         let object = Self::resolve_::<O>(reference, &self.documents)?;
-                        let cached = &*slot.insert(object.into());
-                        Ok(cached.try_into().unwrap_or_else(|_| unreachable!()))
+                        &*slot.insert(object.into())
                     }
-                }
+                };
+
+                let object = cached.try_into().map_err(|_| Error::TypeMismatch {
+                    reference: reference.clone(),
+                    found: cached.kind(),
+                    expected: std::any::type_name::<O>(),
+                })?;
+
+                Ok(object)
             }
-            ReferenceOr::Item(item) => Ok(item),
+            ReferenceOr::Item(object) => Ok(object),
         }
     }
 
