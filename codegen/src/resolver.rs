@@ -1,5 +1,3 @@
-#![expect(unused)]
-
 use std::borrow::Cow;
 use std::collections::HashMap;
 
@@ -30,6 +28,7 @@ pub enum Error {
 
 #[derive(Debug)]
 pub struct ReferenceResolver<'doc> {
+    #[expect(unused)]
     root: &'doc OpenAPI,
     documents: HashMap<String, Cow<'doc, serde_json::Value>>,
     cache: HashMap<String, Component<'doc>>,
