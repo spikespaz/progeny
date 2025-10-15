@@ -2,8 +2,10 @@ mod box_or_ref;
 mod into_cow;
 mod resolver;
 
+use std::ops::Deref as _;
+
 use heck::ToSnakeCase;
-use openapiv3::OpenAPI;
+use openapiv3::{OpenAPI, Parameter};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
@@ -56,8 +58,49 @@ impl<'a> Generator<'a> {
                     }
                     format_ident!("{name}")
                 };
+
+                let mut path_args = Vec::new();
+                let mut query_args = Vec::new();
+                for param in &op.parameters {
+                    let param = self.resolver.resolve(param)?;
+                    match param.deref() {
+                        Parameter::Path {
+                            parameter_data,
+                            style,
+                        } => {
+                            let arg_name = parameter_data.name.to_snake_case();
+                            let arg_name = format_ident!("{arg_name}");
+                            path_args.push(quote!(#arg_name: ()));
+                        }
+                        Parameter::Query {
+                            parameter_data,
+                            allow_reserved,
+                            style,
+                            allow_empty_value,
+                        } => {
+                            if parameter_data.required {
+                                let arg_name = parameter_data.name.to_snake_case();
+                                let arg_name = format_ident!("{arg_name}");
+                                query_args.push(quote!(#arg_name: ()));
+                            } else {
+                                eprintln!("optional query parameters to be in a type")
+                            }
+                        }
+                        Parameter::Header {
+                            parameter_data,
+                            style,
+                        } => eprintln!("header parameters not yet implemented"),
+                        Parameter::Cookie {
+                            parameter_data,
+                            style,
+                        } => eprintln!("cookie parameters not yet implemented"),
+                    }
+                }
+
+                let fn_args = std::iter::empty().chain(path_args).chain(query_args);
+
                 tokens.extend(quote! {
-                    pub fn #fn_name() {
+                    pub fn #fn_name(#(#fn_args,)*) {
                         todo!()
                     }
                 });
