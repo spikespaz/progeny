@@ -1,7 +1,3 @@
-use heck::ToPascalCase as _;
-use percent_encoding::percent_decode_str;
-use quote::format_ident;
-
 #[derive(Debug, thiserror::Error)]
 pub enum InferNameError {
     #[error("invalid JSON pointer in reference '{reference}': {reason}")]
@@ -46,6 +42,7 @@ impl TypeRef {
 
             std::borrow::Cow::Borrowed(first_label)
         } else {
+            use percent_encoding::percent_decode_str;
             let pointer = match percent_decode_str(fragment).decode_utf8() {
                 Ok(pointer) => pointer,
                 Err(e) => {
@@ -70,21 +67,24 @@ impl TypeRef {
             std::borrow::Cow::Owned(last_segment)
         };
 
-        let name = inferred_name.to_pascal_case();
+        Ok(Self {
+            ident: Self::format_ident(inferred_name),
+            reference: Some(reference),
+        })
+    }
+
+    pub fn format_ident(name: impl AsRef<str>) -> syn::Ident {
+        use heck::ToPascalCase as _;
 
         const PASCAL_CASE_KEYWORDS: &[&str] = &["Self"];
 
-        let ident = if name.starts_with(|c: char| !c.is_alphabetic())
+        let name = name.as_ref().to_pascal_case();
+        if name.starts_with(|c: char| !c.is_alphabetic())
             || PASCAL_CASE_KEYWORDS.contains(&name.as_str())
         {
-            format_ident!("_{name}")
+            quote::format_ident!("_{name}")
         } else {
-            format_ident!("{name}")
-        };
-
-        Ok(Self {
-            ident,
-            reference: Some(reference),
-        })
+            quote::format_ident!("{name}")
+        }
     }
 }
