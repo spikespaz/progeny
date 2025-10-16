@@ -4,11 +4,18 @@ use std::ops::Deref;
 use std::rc::Rc;
 
 use openapiv3::{Components, OpenAPI, ReferenceOr};
+use percent_encoding::percent_decode_str;
 
 use crate::IntoCow;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("failed to decode JSON pointer in reference '{reference}': {source}")]
+    DecodePointer {
+        reference: String,
+        #[source]
+        source: std::str::Utf8Error,
+    },
     #[error("no document found for reference '{0}'")]
     DocumentNotFound(String),
     #[error("no component found for reference '{0}'")]
@@ -168,8 +175,16 @@ impl<'doc> ReferenceResolver<'doc> {
         O: serde::de::DeserializeOwned,
     {
         let (url, pointer) = match reference.split_once('#') {
-            Some((url, fragment)) => (url, fragment),
-            None => (reference, ""),
+            Some((url, fragment)) => {
+                let pointer = percent_decode_str(fragment).decode_utf8().map_err(|e| {
+                    Error::DecodePointer {
+                        reference: reference.to_owned(),
+                        source: e,
+                    }
+                })?;
+                (url, pointer)
+            }
+            None => (reference, Cow::Borrowed("")),
         };
 
         let document = documents
@@ -177,7 +192,7 @@ impl<'doc> ReferenceResolver<'doc> {
             .ok_or_else(|| Error::DocumentNotFound(url.to_string()))?;
 
         let component = document
-            .pointer(pointer)
+            .pointer(pointer.deref())
             .ok_or_else(|| Error::ComponentNotFound(reference.to_owned()))?;
 
         serde_json::from_value(component.clone()).map_err(|e| Error::Deserialize {
