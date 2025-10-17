@@ -1,4 +1,4 @@
-#[derive(Debug, thiserror::Error)]
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum InferNameError {
     #[error("invalid JSON pointer in reference '{reference}': {reason}")]
     InvalidPointer {
@@ -15,6 +15,7 @@ pub enum InferNameError {
     MissingName { reference: String },
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TypeRef {
     pub ident: syn::Ident,
     pub reference: Option<String>,
