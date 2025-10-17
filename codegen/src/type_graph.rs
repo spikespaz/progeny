@@ -33,6 +33,8 @@ impl TypeRef {
             if url.is_empty() {
                 return Err(InferNameError::MissingName { reference });
             }
+            // Parsing a URL as a path works for 99% of expected usage.
+            // See the ignored tests for _some_ known failing edge-cases.
             let Some(first_label) = std::path::Path::new(url)
                 .file_name()
                 .map(|s| s.to_str().unwrap())
@@ -131,7 +133,7 @@ impl TypeRef {
 mod tests {
     use test_case::test_case;
 
-    use super::TypeRef;
+    use super::{InferNameError, TypeRef};
 
     #[test_case("foo" => "Foo" ; "simple lower")]
     #[test_case("foo_bar" => "FooBar" ; "snake case")]
@@ -147,5 +149,78 @@ mod tests {
     #[test_case("_leading_underscore" => "LeadingUnderscore" ; "drop leading underscore")]
     fn typeref_format_ident(input: &str) -> String {
         TypeRef::format_ident(input).to_string()
+    }
+
+    //
+    // identifier from reference URL
+    //
+    #[test_case("external-schema.json" => "ExternalSchema" ; "simple file")]
+    #[test_case("dir/file.name.ext" => "File" ; "first non empty label before dot")]
+    #[test_case(".hidden.yaml" => "Hidden" ; "hidden file")]
+    #[test_case("some/dir/" => "Dir" ; "trailing slash uses last segment")]
+    #[test_case("dir/." => "Dir" ; "dir dot pseudo file")]
+    #[test_case("https://example.com/api/image-metadata.schema.json" => "ImageMetadata" ; "name from https url")]
+    #[test_case("file:///etc/schemas/user.json" => "User" ; "name from file url")]
+    #[test_case("https://example.com/api/foo/bar/." => "Bar" ; "https url trailing dot")]
+    #[test_case("https://example.com/api/foo/bar/../baz.json" => "Baz" ; "https url with two dots in middle")]
+    #[test_case("https://example.com/api/foo/./bar.json" => "Bar" ; "https url with one dot in middle")]
+    #[test_case("https://example.com/dir;v=1/file.schema.json" => "File" ; "matrix param in path segment")]
+    //
+    // known broken (url branch), requires full URL parsing to fix
+    //
+    #[test_case("https://example.com/api/foo/bar/.." => ignore "Foo" ; "https url trailing two dots")]
+    //
+    // identifier from reference fragment
+    //
+    #[test_case("#/components/schemas/Foo" => "Foo" ; "basic fragment")]
+    #[test_case("#/components/schemas/Foo~1Bar" => "FooBar" ; "json pointer escape slash")]
+    #[test_case("#/components/schemas/~0tilde" => "Tilde" ; "json pointer escape tilde")]
+    #[test_case("#/components/schemas/caf%C3%A9" => "Café" ; "percent decoded utf8 letter")]
+    #[test_case("#%2Fcomponents%2Fschemas%2FFoo" => "Foo" ; "percent decoded slash")]
+    #[test_case("#/components/schemas/Name+With+Plus" => "NameWithPlus" ; "literal plus chars")]
+    //
+    // precedence
+    //
+    #[test_case("schema.json#/components/schemas/Foo" => "Foo" ; "fragment takes precedence over url")]
+    #[test_case("schema.json#" => "Schema" ; "empty fragment falls back to url")]
+    fn infer_name_from_reference(reference: &str) -> String {
+        TypeRef::from_reference(reference)
+            .unwrap()
+            .ident
+            .to_string()
+    }
+
+    //
+    // invalid pointers
+    //
+    #[test_case("#components/schemas/Foo" => matches InferNameError::InvalidPointer { reason: "missing leading slash", .. } ; "pointer missing leading slash")]
+    //
+    // invalid UTF8 when percent decoded
+    //
+    #[test_case("#/%E0%A4%A" => matches InferNameError::DecodePointer { .. } ; "invalid utf8 in fragment percent decode")]
+    //
+    // missing name (URL branch)
+    //
+    #[test_case("" => matches InferNameError::MissingName { .. } ; "empty string")]
+    #[test_case("." => matches InferNameError::MissingName { .. } ; "one dot")]
+    #[test_case(".." => matches InferNameError::MissingName { .. } ; "two dots")]
+    #[test_case("/" => matches InferNameError::MissingName { .. } ; "root path")]
+    #[test_case("file://.." => matches InferNameError::MissingName { .. } ; "file url two dots")]
+    //
+    // known broken (URL branch), requires full URL parsing to fix
+    //
+    #[test_case("file://." => ignore matches InferNameError::MissingName { .. } ; "file url trailing dot")]
+    #[test_case("https://" => ignore matches InferNameError::MissingName { .. } ; "https url no host")]
+    //
+    // missing name (fragment branch)
+    //
+    #[test_case("#/" => matches InferNameError::MissingName { .. } ; "root pointer")]
+    #[test_case("#/components/schemas/" => matches InferNameError::MissingName { .. } ; "fragment trailing slash no last segment")]
+    //
+    // both empty URL and fragment
+    //
+    #[test_case("#" => matches InferNameError::MissingName { .. } ; "empty fragment with empty url")]
+    fn fail_infer_name_from_reference(reference: &str) -> InferNameError {
+        TypeRef::from_reference(reference).unwrap_err()
     }
 }
