@@ -89,3 +89,23 @@ impl TypeRef {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use test_case::test_case;
+
+    use super::TypeRef;
+
+    #[test_case("foo" => "Foo" ; "simple lower")]
+    #[test_case("foo_bar" => "FooBar" ; "snake case")]
+    #[test_case("user id" => "UserId" ; "string with spaces")]
+    #[test_case("from-train-case" => "FromTrainCase" ; "train case")]
+    #[test_case("any word_boundary-works$" => "AnyWordBoundaryWorks" ; "mixed word boundaries")]
+    #[test_case("123abc" => "_123Abc" ; "capitalize after digit")]
+    #[test_case("123" => "_123" ; "leading digit underscore")]
+    #[test_case("Self" => "_Self" ; "pascal keyword underscore")]
+    #[test_case("_leading_underscore" => "LeadingUnderscore" ; "drop leading underscore")]
+    fn typeref_format_ident(input: &str) -> String {
+        TypeRef::format_ident(input).to_string()
+    }
+}
