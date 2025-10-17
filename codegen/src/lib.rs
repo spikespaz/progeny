@@ -5,7 +5,7 @@ mod type_graph;
 
 use std::ops::Deref as _;
 
-use heck::ToSnakeCase;
+use convert_case::{Case, Casing};
 use openapiv3::{OpenAPI, Parameter};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -51,8 +51,8 @@ impl<'a> Generator<'a> {
             for (method, op) in path.iter() {
                 let fn_name = {
                     let mut name = match &op.operation_id {
-                        Some(op_id) => op_id.to_snake_case(),
-                        None => template.to_snake_case(),
+                        Some(op_id) => op_id.to_case(Case::Snake),
+                        None => template.to_case(Case::Snake),
                     };
                     if self.settings.prefix_operations {
                         name = format!("{method}_{name}")
@@ -69,7 +69,7 @@ impl<'a> Generator<'a> {
                             parameter_data,
                             style,
                         } => {
-                            let arg_name = parameter_data.name.to_snake_case();
+                            let arg_name = parameter_data.name.to_case(Case::Snake);
                             let arg_name = format_ident!("{arg_name}");
                             path_args.push(quote!(#arg_name: ()));
                         }
@@ -80,7 +80,7 @@ impl<'a> Generator<'a> {
                             allow_empty_value,
                         } => {
                             if parameter_data.required {
-                                let arg_name = parameter_data.name.to_snake_case();
+                                let arg_name = parameter_data.name.to_case(Case::Snake);
                                 let arg_name = format_ident!("{arg_name}");
                                 query_args.push(quote!(#arg_name: ()));
                             } else {

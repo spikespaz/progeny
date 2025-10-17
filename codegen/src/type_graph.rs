@@ -75,11 +75,11 @@ impl TypeRef {
     }
 
     pub fn format_ident(name: impl AsRef<str>) -> syn::Ident {
-        use heck::ToPascalCase as _;
+        use convert_case::{Case, Casing as _};
 
         const PASCAL_CASE_KEYWORDS: &[&str] = &["Self"];
 
-        let name = name.as_ref().to_pascal_case();
+        let name = name.as_ref().to_case(Case::Pascal);
         if name.starts_with(|c: char| !c.is_alphabetic())
             || PASCAL_CASE_KEYWORDS.contains(&name.as_str())
         {
