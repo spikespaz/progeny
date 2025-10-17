@@ -90,6 +90,18 @@ impl TypeRef {
             start: 0, // boundary before char
             len: 1,   // consume one char
         };
+        const UPPER_UPPER_LOWER: Boundary = Boundary {
+            name: "UpperUpperLower",
+            condition: |gs, _| {
+                matches!(
+                    std::array::from_fn(|i| gs.get(i).and_then(|g| g.chars().next())),
+                    [Some(a), Some(b), Some(c)] if a.is_uppercase() && b.is_uppercase() && c.is_lowercase()
+                )
+            },
+            arg: None,
+            start: 1, // boundary after the first uppercase char
+            len: 0,   // consume nothing
+        };
         const TYPE_IDENT_BOUNDARIES: &[Boundary] = &[
             NON_ALPHANUMERIC,
             Boundary::LOWER_DIGIT,
@@ -97,6 +109,7 @@ impl TypeRef {
             Boundary::DIGIT_LOWER,
             Boundary::DIGIT_UPPER,
             Boundary::LOWER_UPPER,
+            UPPER_UPPER_LOWER,
         ];
 
         let name = name
@@ -127,6 +140,7 @@ mod tests {
     #[test_case("any word_boundary-works$" => "AnyWordBoundaryWorks" ; "mixed word boundaries")]
     #[test_case(r#"a~b`c!d@e#f$g%h^i&j*k(l)m-n_o+p=q{r}s|t\u:v;w"x'y<z>A,B.C?D/E"# => "ABCDEFGHIJKLMNOPQRSTUVWXYZABCDE" ; "sanitize non-alphanumeric")]
     #[test_case("OpenAPI" => "OpenApi" ; "acronym runs to lowercase")]
+    #[test_case("HTTPServer" => "HttpServer" ; "acronym then word")]
     #[test_case("123abc" => "_123Abc" ; "capitalize after digit")]
     #[test_case("123" => "_123" ; "leading digit underscore")]
     #[test_case("Self" => "_Self" ; "pascal keyword underscore")]
