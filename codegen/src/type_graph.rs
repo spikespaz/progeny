@@ -96,6 +96,7 @@ impl TypeRef {
             Boundary::UPPER_DIGIT,
             Boundary::DIGIT_LOWER,
             Boundary::DIGIT_UPPER,
+            Boundary::LOWER_UPPER,
         ];
 
         let name = name
@@ -125,6 +126,7 @@ mod tests {
     #[test_case("from-train-case" => "FromTrainCase" ; "train case")]
     #[test_case("any word_boundary-works$" => "AnyWordBoundaryWorks" ; "mixed word boundaries")]
     #[test_case(r#"a~b`c!d@e#f$g%h^i&j*k(l)m-n_o+p=q{r}s|t\u:v;w"x'y<z>A,B.C?D/E"# => "ABCDEFGHIJKLMNOPQRSTUVWXYZABCDE" ; "sanitize non-alphanumeric")]
+    #[test_case("OpenAPI" => "OpenApi" ; "acronym runs to lowercase")]
     #[test_case("123abc" => "_123Abc" ; "capitalize after digit")]
     #[test_case("123" => "_123" ; "leading digit underscore")]
     #[test_case("Self" => "_Self" ; "pascal keyword underscore")]
