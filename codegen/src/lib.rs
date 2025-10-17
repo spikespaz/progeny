@@ -2,6 +2,7 @@ mod box_or_ref;
 mod into_cow;
 mod resolver;
 mod type_graph;
+mod type_ref;
 
 use std::ops::Deref as _;
 
