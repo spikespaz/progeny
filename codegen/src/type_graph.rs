@@ -75,11 +75,34 @@ impl TypeRef {
     }
 
     pub fn format_ident(name: impl AsRef<str>) -> syn::Ident {
-        use convert_case::{Case, Casing as _};
+        use convert_case::{Boundary, Case, Casing as _};
 
         const PASCAL_CASE_KEYWORDS: &[&str] = &["Self"];
 
-        let name = name.as_ref().to_case(Case::Pascal);
+        const NON_ALPHANUMERIC: Boundary = Boundary {
+            name: "NonAlphanumeric",
+            condition: |gs, _| {
+                gs.first()
+                    .and_then(|g| g.chars().next())
+                    .is_some_and(|ch| !ch.is_alphanumeric())
+            },
+            arg: None,
+            start: 0, // boundary before char
+            len: 1,   // consume one char
+        };
+        const TYPE_IDENT_BOUNDARIES: &[Boundary] = &[
+            NON_ALPHANUMERIC,
+            Boundary::LOWER_DIGIT,
+            Boundary::UPPER_DIGIT,
+            Boundary::DIGIT_LOWER,
+            Boundary::DIGIT_UPPER,
+        ];
+
+        let name = name
+            .as_ref()
+            .with_boundaries(TYPE_IDENT_BOUNDARIES)
+            .to_case(Case::Pascal);
+
         if name.starts_with(|c: char| !c.is_alphabetic())
             || PASCAL_CASE_KEYWORDS.contains(&name.as_str())
         {
@@ -101,6 +124,7 @@ mod tests {
     #[test_case("user id" => "UserId" ; "string with spaces")]
     #[test_case("from-train-case" => "FromTrainCase" ; "train case")]
     #[test_case("any word_boundary-works$" => "AnyWordBoundaryWorks" ; "mixed word boundaries")]
+    #[test_case(r#"a~b`c!d@e#f$g%h^i&j*k(l)m-n_o+p=q{r}s|t\u:v;w"x'y<z>A,B.C?D/E"# => "ABCDEFGHIJKLMNOPQRSTUVWXYZABCDE" ; "sanitize non-alphanumeric")]
     #[test_case("123abc" => "_123Abc" ; "capitalize after digit")]
     #[test_case("123" => "_123" ; "leading digit underscore")]
     #[test_case("Self" => "_Self" ; "pascal keyword underscore")]
