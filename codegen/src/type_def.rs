@@ -96,4 +96,19 @@ impl IntegerKind {
             }
         }
     }
+
+    pub fn to_type(self) -> syn::Type {
+        match self {
+            IntegerKind::I8 => parse_quote!(i8),
+            IntegerKind::I16 => parse_quote!(i16),
+            IntegerKind::I32 => parse_quote!(i32),
+            IntegerKind::I64 => parse_quote!(i64),
+            IntegerKind::I128 => parse_quote!(i128),
+            IntegerKind::U8 => parse_quote!(u8),
+            IntegerKind::U16 => parse_quote!(u16),
+            IntegerKind::U32 => parse_quote!(u32),
+            IntegerKind::U64 => parse_quote!(u64),
+            IntegerKind::U128 => parse_quote!(u128),
+        }
+    }
 }
