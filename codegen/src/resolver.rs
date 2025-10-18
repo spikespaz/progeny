@@ -137,33 +137,45 @@ impl<'doc> ReferenceResolver<'doc> {
         Handle<'item, O>: TryFrom<Component<'item>>,
     {
         match ref_or {
-            ReferenceOr::Reference { reference } => {
-                // <https://docs.rs/polonius-the-crab/latest/polonius_the_crab/#explanation>
-                use std::collections::hash_map::Entry;
-                let cached = match self.cache.entry(reference.clone()) {
-                    Entry::Occupied(entry) => {
-                        let cached = entry.into_mut();
-                        cached.promote().map_err(|e| Error::Deserialize {
-                            reference: reference.clone(),
-                            source: e,
-                        })?
-                    }
-                    Entry::Vacant(slot) => {
-                        let object = Self::resolve_(reference, &self.documents)?;
-                        slot.insert(Component::from(object))
-                    }
-                };
-
-                let handle = cached.clone().handle().ok_or_else(|| Error::TypeMismatch {
-                    reference: reference.clone(),
-                    found: cached.kind(),
-                    expected: std::any::type_name::<O>(),
-                })?;
-
-                Ok(handle)
-            }
+            ReferenceOr::Reference { reference } => self.resolve_reference(reference),
             ReferenceOr::Item(object) => Ok(Handle::from(object)),
         }
+    }
+
+    pub fn resolve_reference<'item, O>(
+        &mut self,
+        reference: &str,
+    ) -> Result<Handle<'item, O>, Error>
+    where
+        'doc: 'item,
+        O: serde::de::DeserializeOwned,
+        Component<'doc>: From<O>,
+        Handle<'item, O>: TryFrom<Component<'item>>,
+    {
+        use std::collections::hash_map::Entry;
+
+        // <https://docs.rs/polonius-the-crab/latest/polonius_the_crab/#explanation>
+        let cached = match self.cache.entry(reference.to_owned()) {
+            Entry::Occupied(entry) => {
+                let cached = entry.into_mut();
+                cached.promote().map_err(|e| Error::Deserialize {
+                    reference: reference.to_owned(),
+                    source: e,
+                })?
+            }
+            Entry::Vacant(slot) => {
+                let object = Self::resolve_(reference, &self.documents)?;
+                slot.insert(Component::from(object))
+            }
+        };
+
+        let handle = cached.clone().handle().ok_or_else(|| Error::TypeMismatch {
+            reference: reference.to_owned(),
+            found: cached.kind(),
+            expected: std::any::type_name::<O>(),
+        })?;
+
+        Ok(handle)
     }
 
     /// Private, bypasses the cache.
