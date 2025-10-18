@@ -25,7 +25,7 @@ impl TypeDef {
         match &schema.schema_kind {
             SchemaKind::Type(Type::String(_string_type)) => todo!(),
             SchemaKind::Type(Type::Number(_number_type)) => todo!(),
-            SchemaKind::Type(Type::Integer(_integer_type)) => todo!(),
+            SchemaKind::Type(Type::Integer(integer_type)) => Ok(Self::from(integer_type)),
             SchemaKind::Type(Type::Object(_object_type)) => todo!(),
             SchemaKind::Type(Type::Array(_array_type)) => todo!(),
             SchemaKind::Type(Type::Boolean(boolean_type)) => Ok(Self::from(boolean_type)),
@@ -35,6 +35,64 @@ impl TypeDef {
             SchemaKind::Not { not: _ } => todo!(),
             SchemaKind::Any(_any_schema) => todo!(),
         }
+    }
+}
+
+impl From<&openapiv3::IntegerType> for TypeDef {
+    fn from(integer_type: &openapiv3::IntegerType) -> Self {
+        let &openapiv3::IntegerType {
+            ref format,
+            multiple_of: _, // TODO
+            exclusive_minimum,
+            exclusive_maximum,
+            minimum,
+            maximum,
+            ref enumeration,
+        } = integer_type;
+
+        let (integer_kind, format) = match IntegerKind::try_from(format) {
+            Ok(kind) => (Some(kind), None),
+            Err(Some(special)) => (None, Some(special)),
+            Err(None) => (None, None),
+        };
+        if let Some(_special) = format {
+            // unimplemented!("special format '{special}' for integer")
+        }
+
+        let bound_min = minimum.and_then(|min| min.checked_add(exclusive_minimum as i64));
+        let bound_max = maximum.and_then(|max| max.checked_sub(exclusive_maximum as i64));
+
+        let overflow_min = minimum.is_some() && bound_min.is_none();
+        let overflow_max = maximum.is_some() && bound_max.is_none();
+
+        let non_negative = bound_min.or(minimum).is_some_and(|min| min >= 0);
+
+        let enum_min = enumeration.iter().flatten().min().copied();
+        let enum_max = enumeration.iter().flatten().max().copied();
+
+        // intersection extrema
+        let effective_min = [bound_min, enum_min].iter().flatten().max().copied();
+        let effective_max = [bound_max, enum_max].iter().flatten().min().copied();
+
+        let empty_domain =
+            matches!((effective_min, effective_max), (Some(min), Some(max)) if min > max);
+
+        if empty_domain {
+            return Self::Inline(parse_quote! { ! });
+        }
+
+        // Policy: widen on overflow
+        if overflow_max && non_negative {
+            return Self::Inline(parse_quote! { u128 });
+        } else if overflow_min || overflow_max {
+            return Self::Inline(parse_quote! { i128 });
+        }
+
+        let integer_kind =
+            integer_kind.unwrap_or(IntegerKind::from_bounds(effective_min, effective_max));
+
+        // TODO: construct a refinement type using the `nutype` crate
+        Self::Inline(integer_kind.to_type())
     }
 }
 
