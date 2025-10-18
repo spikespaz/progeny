@@ -1,6 +1,7 @@
 mod box_or_ref;
 mod into_cow;
 mod resolver;
+mod type_def;
 mod type_graph;
 mod type_ref;
 
