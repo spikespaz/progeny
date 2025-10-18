@@ -15,7 +15,7 @@ pub enum InferNameError {
     MissingName { reference: String },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct TypeRef {
     pub ident: syn::Ident,
     pub reference: Option<String>,
