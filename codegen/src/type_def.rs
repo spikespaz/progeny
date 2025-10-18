@@ -6,6 +6,20 @@ pub enum TypeDef {
     Inline(syn::Type),
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum IntegerKind {
+    U8,
+    U16,
+    U32,
+    U64,
+    U128,
+    I8,
+    I16,
+    I32,
+    I64,
+    I128,
+}
+
 impl TypeDef {
     pub fn from_schema(schema: &Schema) -> Result<Self, &'static str> {
         match &schema.schema_kind {
@@ -56,5 +70,30 @@ impl From<&openapiv3::BooleanType> for TypeDef {
         };
 
         Self::Inline(ty)
+    }
+}
+
+impl IntegerKind {
+    pub fn from_bounds(min_bound: Option<i64>, max_bound: Option<i64>) -> Self {
+        debug_assert!(
+            matches!((min_bound, max_bound), (Some(min), Some(max)) if min <= max),
+            "min_bound must be <= max_bound"
+        );
+        let non_negative = min_bound.is_some_and(|min| min >= 0);
+        if non_negative {
+            match max_bound.map(|max| max as u64) {
+                Some(max) if max <= u8::MAX as u64 => IntegerKind::U8,
+                Some(max) if max <= u16::MAX as u64 => IntegerKind::U16,
+                Some(max) if max <= u32::MAX as u64 => IntegerKind::U32,
+                _ => IntegerKind::U64,
+            }
+        } else {
+            match (min_bound.unwrap_or(i64::MIN), max_bound.unwrap_or(i64::MAX)) {
+                (min, max) if min >= i8::MIN as i64 && max <= i8::MAX as i64 => IntegerKind::I8,
+                (min, max) if min >= i16::MIN as i64 && max <= i16::MAX as i64 => IntegerKind::I16,
+                (min, max) if min >= i32::MIN as i64 && max <= i32::MAX as i64 => IntegerKind::I32,
+                _ => IntegerKind::I64,
+            }
+        }
     }
 }
