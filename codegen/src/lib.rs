@@ -12,6 +12,7 @@ use openapiv3::{OpenAPI, Parameter};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
+pub(crate) use __sealed::Sealed;
 pub(crate) use into_cow::IntoCow;
 pub(crate) use resolver::ReferenceResolver;
 
@@ -117,4 +118,9 @@ impl<'a> Generator<'a> {
 pub fn generate_openapi(spec: &OpenAPI, settings: &Settings) -> anyhow::Result<TokenStream> {
     let mut generator = Generator::new(spec, settings);
     generator.run()
+}
+
+#[doc(hidden)]
+mod __sealed {
+    pub trait Sealed {}
 }

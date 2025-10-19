@@ -105,33 +105,21 @@ pub enum IntegerKind {
 impl TypeGraph {
     pub fn new() -> Self {
         macro_rules! insert_primitives {
-            ( $types:ident, [ $($ty:expr,)* ] ) => {
+            ( $types:ident <- [ $($ty:ident,)* ] ) => {
                 HashMap::from_iter([
-                    $( ($ty, $types.insert(TypeKind::Primitive($ty))), )*
+                    $( ($ty::TYPE, $types.insert($ty::KIND)), )*
                 ])
             };
         }
 
         let mut types = SlotMap::with_key();
-        let primitives = insert_primitives!(
-            types,
-            [
-                Primitive::String,
-                Primitive::Float(FloatKind::F32),
-                Primitive::Float(FloatKind::F64),
-                Primitive::Integer(IntegerKind::U8),
-                Primitive::Integer(IntegerKind::U16),
-                Primitive::Integer(IntegerKind::U32),
-                Primitive::Integer(IntegerKind::U64),
-                Primitive::Integer(IntegerKind::U128),
-                Primitive::Integer(IntegerKind::I8),
-                Primitive::Integer(IntegerKind::I16),
-                Primitive::Integer(IntegerKind::I32),
-                Primitive::Integer(IntegerKind::I64),
-                Primitive::Integer(IntegerKind::I128),
-                Primitive::Boolean,
-            ]
-        );
+        let primitives = insert_primitives!(types <- [
+            String,
+            f32, f64,
+            i8, i16, i32, i64, i128,
+            u8, u16, u32, u64, u128,
+            bool,
+        ]);
 
         Self {
             types,
@@ -181,6 +169,40 @@ impl TypeGraph {
         let type_kind = self.get_by_id(type_id);
         Some((type_id, type_kind))
     }
+}
+
+pub trait PrimitiveType: crate::Sealed {
+    const TYPE: Primitive;
+    const KIND: TypeKind = TypeKind::Primitive(Self::TYPE);
+}
+
+macro_rules! impl_primitive_types {
+    ( $( $rust_ty:ty => $Primitive:expr ; )* ) => {
+        $(
+            impl crate::Sealed for $rust_ty {}
+
+            impl PrimitiveType for $rust_ty {
+                const TYPE: Primitive = $Primitive;
+            }
+        )*
+    };
+}
+
+impl_primitive_types! {
+    String => Primitive::String;
+    f32 => Primitive::Float(FloatKind::F32);
+    f64 => Primitive::Float(FloatKind::F64);
+    i8 => Primitive::Integer(IntegerKind::I8);
+    i16 => Primitive::Integer(IntegerKind::I16);
+    i32 => Primitive::Integer(IntegerKind::I32);
+    i64 => Primitive::Integer(IntegerKind::I64);
+    i128 => Primitive::Integer(IntegerKind::I128);
+    u8 => Primitive::Integer(IntegerKind::U8);
+    u16 => Primitive::Integer(IntegerKind::U16);
+    u32 => Primitive::Integer(IntegerKind::U32);
+    u64 => Primitive::Integer(IntegerKind::U64);
+    u128 => Primitive::Integer(IntegerKind::U128);
+    bool => Primitive::Boolean;
 }
 
 type StringTypeFormat = openapiv3::VariantOrUnknownOrEmpty<openapiv3::StringFormat>;
