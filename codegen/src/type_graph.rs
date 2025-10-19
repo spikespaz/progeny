@@ -13,12 +13,12 @@ new_key_type! { pub struct TypeId; }
 pub struct TypeGraph {
     types: SlotMap<TypeId, TypeKind>,
     by_ref: HashMap<TypeRef, TypeId>,
-    primitive_ids: [TypeId; Primitive::COUNT],
+    scalar_ids: [TypeId; Scalar::COUNT],
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TypeKind {
-    Primitive(Primitive),
+    Scalar(Scalar),
     Refinement(Refinement),
     Nullable(TypeId),
     Coproduct(Vec<TypeId>),
@@ -28,7 +28,7 @@ pub enum TypeKind {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub enum Primitive {
+pub enum Scalar {
     String,
     Float(FloatKind),
     Integer(IntegerKind),
@@ -106,15 +106,15 @@ pub enum IntegerKind {
 impl TypeGraph {
     pub fn new() -> Self {
         let mut types = SlotMap::with_key();
-        let primitive_ids = std::array::from_fn(|i| {
-            let kind = TypeKind::Primitive(Primitive::TYPES[i]);
+        let scalar_ids = std::array::from_fn(|i| {
+            let kind = TypeKind::Scalar(Scalar::TYPES[i]);
             types.insert(kind)
         });
 
         Self {
             types,
             by_ref: HashMap::new(),
-            primitive_ids,
+            scalar_ids,
         }
     }
 
@@ -137,8 +137,8 @@ impl TypeGraph {
     }
 
     fn insert(&mut self, type_ref: TypeRef, type_kind: TypeKind) -> TypeId {
-        let type_id = if let TypeKind::Primitive(ty) = type_kind {
-            self.primitive_id(ty)
+        let type_id = if let TypeKind::Scalar(ty) = type_kind {
+            self.scalar_id(ty)
         } else {
             self.types.insert(type_kind)
         };
@@ -146,8 +146,8 @@ impl TypeGraph {
         type_id
     }
 
-    pub fn primitive_id(&self, ty: Primitive) -> TypeId {
-        self.primitive_ids[ty.index()]
+    pub fn scalar_id(&self, ty: Scalar) -> TypeId {
+        self.scalar_ids[ty.index()]
     }
 
     pub fn get_by_id(&self, type_id: TypeId) -> &TypeKind {
@@ -176,16 +176,16 @@ impl TypeGraph {
             .flatten()
             .cloned()
             .collect::<IndexSet<_>>();
-        let is_primitive = format.is_none()
+        let is_unconstrained = format.is_none()
             && pattern.is_none()
             && enumeration.is_empty()
             && (min_length.is_none() || min_length == Some(0))
             && max_length.is_none();
 
-        let type_kind = if is_primitive && !is_nullable {
+        let type_kind = if is_unconstrained && !is_nullable {
             String::KIND
-        } else if is_primitive && is_nullable {
-            TypeKind::Nullable(self.primitive_id(String::TYPE))
+        } else if is_unconstrained && is_nullable {
+            TypeKind::Nullable(self.scalar_id(String::TYPE))
         } else {
             TypeKind::Refinement(Refinement::String {
                 format,
@@ -200,33 +200,33 @@ impl TypeGraph {
     }
 }
 
-pub trait PrimitiveType: crate::Sealed {
-    const TYPE: Primitive;
-    const KIND: TypeKind = TypeKind::Primitive(Self::TYPE);
+pub trait ScalarType: crate::Sealed {
+    const TYPE: Scalar;
+    const KIND: TypeKind = TypeKind::Scalar(Self::TYPE);
 }
 
-macro_rules! impl_primitive_types {
-    ( @impl, $( $rust_ty:ty => $Primitive:expr )* ) => {
+macro_rules! impl_scalar_types {
+    ( @impl, $( $rust_ty:ty => $Scalar:expr )* ) => {
         $(
             impl crate::Sealed for $rust_ty {}
 
-            impl PrimitiveType for $rust_ty {
-                const TYPE: Primitive = $Primitive;
+            impl ScalarType for $rust_ty {
+                const TYPE: Scalar = $Scalar;
             }
         )*
 
-        impl Primitive {
-            pub const COUNT: usize = [$($Primitive,)*].len();
-            pub const TYPES: [Primitive; Self::COUNT] = [$($Primitive,)*];
+        impl Scalar {
+            pub const COUNT: usize = [$($Scalar,)*].len();
+            pub const TYPES: [Scalar; Self::COUNT] = [$($Scalar,)*];
         }
     };
-    ( @impl, $( $Primitive:pat )* ) => {
-        impl Primitive {
+    ( @impl, $( $Scalar:pat )* ) => {
+        impl Scalar {
             pub const fn index(self) -> usize {
                 let mut i = 0;
                 while i < Self::COUNT {
                     match (self, Self::TYPES[i]) {
-                        $(($Primitive, $Primitive) => return i,)*
+                        $(($Scalar, $Scalar) => return i,)*
                         _ => i += 1,
                     }
                 }
@@ -234,27 +234,27 @@ macro_rules! impl_primitive_types {
             }
         }
     };
-    ( $( ( $rust_ty:ty => $( $Primitive:tt )+ ) ; )* ) => {
-        impl_primitive_types!(@impl, $($rust_ty => $($Primitive)+)*);
-        impl_primitive_types!(@impl, $($($Primitive)+)*);
+    ( $( ( $rust_ty:ty => $( $Scalar:tt )+ ) ; )* ) => {
+        impl_scalar_types!(@impl, $($rust_ty => $($Scalar)+)*);
+        impl_scalar_types!(@impl, $($($Scalar)+)*);
     };
 }
 
-impl_primitive_types! {
-    (String => Primitive::String);
-    (f32 => Primitive::Float(FloatKind::F32));
-    (f64 => Primitive::Float(FloatKind::F64));
-    (i8 => Primitive::Integer(IntegerKind::I8));
-    (i16 => Primitive::Integer(IntegerKind::I16));
-    (i32 => Primitive::Integer(IntegerKind::I32));
-    (i64 => Primitive::Integer(IntegerKind::I64));
-    (i128 => Primitive::Integer(IntegerKind::I128));
-    (u8 => Primitive::Integer(IntegerKind::U8));
-    (u16 => Primitive::Integer(IntegerKind::U16));
-    (u32 => Primitive::Integer(IntegerKind::U32));
-    (u64 => Primitive::Integer(IntegerKind::U64));
-    (u128 => Primitive::Integer(IntegerKind::U128));
-    (bool => Primitive::Boolean);
+impl_scalar_types! {
+    (String => Scalar::String);
+    (f32 => Scalar::Float(FloatKind::F32));
+    (f64 => Scalar::Float(FloatKind::F64));
+    (i8 => Scalar::Integer(IntegerKind::I8));
+    (i16 => Scalar::Integer(IntegerKind::I16));
+    (i32 => Scalar::Integer(IntegerKind::I32));
+    (i64 => Scalar::Integer(IntegerKind::I64));
+    (i128 => Scalar::Integer(IntegerKind::I128));
+    (u8 => Scalar::Integer(IntegerKind::U8));
+    (u16 => Scalar::Integer(IntegerKind::U16));
+    (u32 => Scalar::Integer(IntegerKind::U32));
+    (u64 => Scalar::Integer(IntegerKind::U64));
+    (u128 => Scalar::Integer(IntegerKind::U128));
+    (bool => Scalar::Boolean);
 }
 
 type StringTypeFormat = openapiv3::VariantOrUnknownOrEmpty<openapiv3::StringFormat>;
