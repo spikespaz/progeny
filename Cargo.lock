@@ -108,6 +108,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "convert_case",
+ "indexmap",
  "openapiv3",
  "percent-encoding",
  "proc-macro2",

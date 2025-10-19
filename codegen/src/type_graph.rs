@@ -1,5 +1,6 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
+use indexmap::IndexSet;
 use openapiv3::{Schema, SchemaKind, Type};
 use slotmap::{SlotMap, new_key_type};
 
@@ -41,7 +42,7 @@ pub enum Refinement {
         pattern: Option<String>,
         min_length: Option<usize>,
         max_length: Option<usize>,
-        enumeration: HashSet<String>,
+        enumeration: IndexSet<String>,
     },
     Float {
         kind: FloatKind,
@@ -57,7 +58,7 @@ pub enum Refinement {
         multiple_of: Option<i64>,
         minimum: Option<(bool, i64)>,
         maximum: Option<(bool, i64)>,
-        enumeration: Vec<i64>,
+        enumeration: IndexSet<i64>,
     },
     Boolean {
         has_true: bool,
