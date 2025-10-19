@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use indexmap::IndexSet;
-use openapiv3::{Schema, SchemaKind, Type};
+use openapiv3::{Schema, SchemaKind, StringType, Type};
 use slotmap::{SlotMap, new_key_type};
 
 use crate::ReferenceResolver;
@@ -118,9 +118,9 @@ impl TypeGraph {
         }
     }
 
-    pub fn add_schema(schema: &Schema, resolver: &mut ReferenceResolver<'_>) -> TypeId {
+    pub fn add_schema(&mut self, schema: &Schema, resolver: &mut ReferenceResolver<'_>) -> TypeId {
         match &schema.schema_kind {
-            SchemaKind::Type(Type::String(_string_type)) => todo!(),
+            SchemaKind::Type(Type::String(string_type)) => self.add_string_type(string_type),
             SchemaKind::Type(Type::Number(_number_type)) => todo!(),
             SchemaKind::Type(Type::Integer(_integer_type)) => todo!(),
             SchemaKind::Type(Type::Object(_object_type)) => todo!(),
@@ -158,6 +158,45 @@ impl TypeGraph {
         let type_id = *self.by_ref.get(type_ref)?;
         let type_kind = self.get_by_id(type_id);
         Some((type_id, type_kind))
+    }
+
+    pub fn add_string_type(&mut self, string_type: &StringType) -> TypeId {
+        let &StringType {
+            ref format,
+            ref pattern,
+            ref enumeration,
+            min_length,
+            max_length,
+        } = string_type;
+
+        let format = StringFormat::try_from(format).ok();
+        let is_nullable = enumeration.contains(&None);
+        let enumeration = enumeration
+            .iter()
+            .flatten()
+            .cloned()
+            .collect::<IndexSet<_>>();
+        let is_primitive = format.is_none()
+            && pattern.is_none()
+            && enumeration.is_empty()
+            && (min_length.is_none() || min_length == Some(0))
+            && max_length.is_none();
+
+        let type_kind = if is_primitive && !is_nullable {
+            String::KIND
+        } else if is_primitive && is_nullable {
+            TypeKind::Nullable(self.primitive_id(String::TYPE))
+        } else {
+            TypeKind::Refinement(Refinement::String {
+                format,
+                pattern: pattern.clone(),
+                min_length,
+                max_length,
+                enumeration,
+            })
+        };
+
+        self.types.insert(type_kind)
     }
 }
 
