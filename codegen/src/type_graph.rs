@@ -12,6 +12,7 @@ new_key_type! { pub struct TypeId; }
 pub struct TypeGraph {
     types: SlotMap<TypeId, TypeKind>,
     by_ref: HashMap<TypeRef, TypeId>,
+    primitives: HashMap<Primitive, TypeId>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -25,7 +26,7 @@ pub enum TypeKind {
     Complement(TypeId),
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Primitive {
     String,
     Float(FloatKind),
@@ -81,13 +82,13 @@ pub enum StringFormat {
     Other(String),
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum FloatKind {
     F32,
     F64,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum IntegerKind {
     U8,
     U16,
@@ -102,6 +103,43 @@ pub enum IntegerKind {
 }
 
 impl TypeGraph {
+    pub fn new() -> Self {
+        macro_rules! insert_primitives {
+            ( $types:ident, [ $($ty:expr,)* ] ) => {
+                HashMap::from_iter([
+                    $( ($ty, $types.insert(TypeKind::Primitive($ty))), )*
+                ])
+            };
+        }
+
+        let mut types = SlotMap::with_key();
+        let primitives = insert_primitives!(
+            types,
+            [
+                Primitive::String,
+                Primitive::Float(FloatKind::F32),
+                Primitive::Float(FloatKind::F64),
+                Primitive::Integer(IntegerKind::U8),
+                Primitive::Integer(IntegerKind::U16),
+                Primitive::Integer(IntegerKind::U32),
+                Primitive::Integer(IntegerKind::U64),
+                Primitive::Integer(IntegerKind::U128),
+                Primitive::Integer(IntegerKind::I8),
+                Primitive::Integer(IntegerKind::I16),
+                Primitive::Integer(IntegerKind::I32),
+                Primitive::Integer(IntegerKind::I64),
+                Primitive::Integer(IntegerKind::I128),
+                Primitive::Boolean,
+            ]
+        );
+
+        Self {
+            types,
+            by_ref: HashMap::new(),
+            primitives,
+        }
+    }
+
     pub fn add_schema(schema: &Schema, resolver: &mut ReferenceResolver<'_>) -> TypeId {
         match &schema.schema_kind {
             SchemaKind::Type(Type::String(_string_type)) => todo!(),
@@ -124,6 +162,10 @@ impl TypeGraph {
         let type_id = self.types.insert(type_kind);
         self.by_ref.insert(type_ref, type_id);
         type_id
+    }
+
+    pub fn primitive_id(&self, ty: Primitive) -> TypeId {
+        self.primitives[&ty]
     }
 
     pub fn get_by_id(&self, type_id: TypeId) -> &TypeKind {
