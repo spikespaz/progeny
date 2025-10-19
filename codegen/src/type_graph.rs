@@ -13,7 +13,7 @@ new_key_type! { pub struct TypeId; }
 pub struct TypeGraph {
     types: SlotMap<TypeId, TypeKind>,
     by_ref: HashMap<TypeRef, TypeId>,
-    primitives: HashMap<Primitive, TypeId>,
+    primitive_ids: [TypeId; Primitive::COUNT],
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -105,27 +105,16 @@ pub enum IntegerKind {
 
 impl TypeGraph {
     pub fn new() -> Self {
-        macro_rules! insert_primitives {
-            ( $types:ident <- [ $($ty:ident,)* ] ) => {
-                HashMap::from_iter([
-                    $( ($ty::TYPE, $types.insert($ty::KIND)), )*
-                ])
-            };
-        }
-
         let mut types = SlotMap::with_key();
-        let primitives = insert_primitives!(types <- [
-            String,
-            f32, f64,
-            i8, i16, i32, i64, i128,
-            u8, u16, u32, u64, u128,
-            bool,
-        ]);
+        let primitive_ids = std::array::from_fn(|i| {
+            let kind = TypeKind::Primitive(Primitive::TYPES[i]);
+            types.insert(kind)
+        });
 
         Self {
             types,
             by_ref: HashMap::new(),
-            primitives,
+            primitive_ids,
         }
     }
 
@@ -158,7 +147,7 @@ impl TypeGraph {
     }
 
     pub fn primitive_id(&self, ty: Primitive) -> TypeId {
-        self.primitives[&ty]
+        self.primitive_ids[ty.index()]
     }
 
     pub fn get_by_id(&self, type_id: TypeId) -> &TypeKind {
