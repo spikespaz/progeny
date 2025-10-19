@@ -178,7 +178,7 @@ pub trait PrimitiveType: crate::Sealed {
 }
 
 macro_rules! impl_primitive_types {
-    ( $( $rust_ty:ty => $Primitive:expr ; )* ) => {
+    ( @impl, $( $rust_ty:ty => $Primitive:expr )* ) => {
         $(
             impl crate::Sealed for $rust_ty {}
 
@@ -192,23 +192,41 @@ macro_rules! impl_primitive_types {
             pub const TYPES: [Primitive; Self::COUNT] = [$($Primitive,)*];
         }
     };
+    ( @impl, $( $Primitive:pat )* ) => {
+        impl Primitive {
+            pub const fn index(self) -> usize {
+                let mut i = 0;
+                while i < Self::COUNT {
+                    match (self, Self::TYPES[i]) {
+                        $(($Primitive, $Primitive) => return i,)*
+                        _ => i += 1,
+                    }
+                }
+                unreachable!();
+            }
+        }
+    };
+    ( $( ( $rust_ty:ty => $( $Primitive:tt )+ ) ; )* ) => {
+        impl_primitive_types!(@impl, $($rust_ty => $($Primitive)+)*);
+        impl_primitive_types!(@impl, $($($Primitive)+)*);
+    };
 }
 
 impl_primitive_types! {
-    String => Primitive::String;
-    f32 => Primitive::Float(FloatKind::F32);
-    f64 => Primitive::Float(FloatKind::F64);
-    i8 => Primitive::Integer(IntegerKind::I8);
-    i16 => Primitive::Integer(IntegerKind::I16);
-    i32 => Primitive::Integer(IntegerKind::I32);
-    i64 => Primitive::Integer(IntegerKind::I64);
-    i128 => Primitive::Integer(IntegerKind::I128);
-    u8 => Primitive::Integer(IntegerKind::U8);
-    u16 => Primitive::Integer(IntegerKind::U16);
-    u32 => Primitive::Integer(IntegerKind::U32);
-    u64 => Primitive::Integer(IntegerKind::U64);
-    u128 => Primitive::Integer(IntegerKind::U128);
-    bool => Primitive::Boolean;
+    (String => Primitive::String);
+    (f32 => Primitive::Float(FloatKind::F32));
+    (f64 => Primitive::Float(FloatKind::F64));
+    (i8 => Primitive::Integer(IntegerKind::I8));
+    (i16 => Primitive::Integer(IntegerKind::I16));
+    (i32 => Primitive::Integer(IntegerKind::I32));
+    (i64 => Primitive::Integer(IntegerKind::I64));
+    (i128 => Primitive::Integer(IntegerKind::I128));
+    (u8 => Primitive::Integer(IntegerKind::U8));
+    (u16 => Primitive::Integer(IntegerKind::U16));
+    (u32 => Primitive::Integer(IntegerKind::U32));
+    (u64 => Primitive::Integer(IntegerKind::U64));
+    (u128 => Primitive::Integer(IntegerKind::U128));
+    (bool => Primitive::Boolean);
 }
 
 type StringTypeFormat = openapiv3::VariantOrUnknownOrEmpty<openapiv3::StringFormat>;
