@@ -186,6 +186,11 @@ macro_rules! impl_primitive_types {
                 const TYPE: Primitive = $Primitive;
             }
         )*
+
+        impl Primitive {
+            pub const COUNT: usize = [$($Primitive,)*].len();
+            pub const TYPES: [Primitive; Self::COUNT] = [$($Primitive,)*];
+        }
     };
 }
 
