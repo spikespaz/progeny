@@ -159,7 +159,11 @@ impl TypeGraph {
     }
 
     fn insert(&mut self, type_ref: TypeRef, type_kind: TypeKind) -> TypeId {
-        let type_id = self.types.insert(type_kind);
+        let type_id = if let TypeKind::Primitive(ty) = type_kind {
+            self.primitive_id(ty)
+        } else {
+            self.types.insert(type_kind)
+        };
         self.by_ref.insert(type_ref, type_id);
         type_id
     }
