@@ -136,12 +136,16 @@ impl TypeGraph {
         }
     }
 
-    fn insert_named(&mut self, type_ref: TypeRef, type_kind: TypeKind) -> TypeId {
-        let type_id = if let TypeKind::Scalar(ty) = type_kind {
+    fn insert(&mut self, type_kind: TypeKind) -> TypeId {
+        if let TypeKind::Scalar(ty) = type_kind {
             self.scalar_id(ty)
         } else {
             self.types.insert(type_kind)
-        };
+        }
+    }
+
+    fn insert_named(&mut self, type_ref: TypeRef, type_kind: TypeKind) -> TypeId {
+        let type_id = self.insert(type_kind);
         self.by_ref.insert(type_ref, type_id);
         type_id
     }
@@ -196,7 +200,7 @@ impl TypeGraph {
             })
         };
 
-        self.types.insert(type_kind)
+        self.insert(type_kind)
     }
 }
 
