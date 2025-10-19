@@ -187,7 +187,7 @@ impl TypeGraph {
             && max_length.is_none();
 
         let type_kind = if is_unconstrained && !is_nullable {
-            String::KIND
+            TypeKind::Scalar(String::TYPE)
         } else if is_unconstrained && is_nullable {
             TypeKind::Nullable(self.scalar_id(String::TYPE))
         } else {
@@ -206,7 +206,6 @@ impl TypeGraph {
 
 pub trait ScalarType: crate::Sealed {
     const TYPE: Scalar;
-    const KIND: TypeKind = TypeKind::Scalar(Self::TYPE);
 }
 
 macro_rules! impl_scalar_types {
