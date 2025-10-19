@@ -118,6 +118,26 @@ impl TypeGraph {
     }
 }
 
+type StringTypeFormat = openapiv3::VariantOrUnknownOrEmpty<openapiv3::StringFormat>;
+
+impl<'a> TryFrom<&'a StringTypeFormat> for StringFormat {
+    type Error = ();
+
+    fn try_from(other: &'a StringTypeFormat) -> Result<Self, Self::Error> {
+        use openapiv3::StringFormat;
+
+        match other {
+            StringTypeFormat::Item(StringFormat::Date) => Ok(Self::Date),
+            StringTypeFormat::Item(StringFormat::DateTime) => Ok(Self::DateTime),
+            StringTypeFormat::Item(StringFormat::Password) => Ok(Self::Password),
+            StringTypeFormat::Item(StringFormat::Byte) => Ok(Self::Byte),
+            StringTypeFormat::Item(StringFormat::Binary) => Ok(Self::Binary),
+            StringTypeFormat::Unknown(unknown) => Ok(Self::Other(unknown.clone())),
+            StringTypeFormat::Empty => Err(()),
+        }
+    }
+}
+
 type FloatTypeFormat = openapiv3::VariantOrUnknownOrEmpty<openapiv3::NumberFormat>;
 
 impl<'a> TryFrom<&'a FloatTypeFormat> for FloatKind {
