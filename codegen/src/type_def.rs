@@ -158,32 +158,3 @@ impl IntegerKind {
         }
     }
 }
-
-type IntegerTypeFormat = openapiv3::VariantOrUnknownOrEmpty<openapiv3::IntegerFormat>;
-
-impl<'a> TryFrom<&'a IntegerTypeFormat> for IntegerKind {
-    type Error = Option<&'a str>;
-
-    fn try_from(other: &'a IntegerTypeFormat) -> Result<Self, Self::Error> {
-        use openapiv3::IntegerFormat;
-
-        match other {
-            IntegerTypeFormat::Item(IntegerFormat::Int32) => Ok(Self::I32),
-            IntegerTypeFormat::Item(IntegerFormat::Int64) => Ok(Self::I64),
-            IntegerTypeFormat::Unknown(unknown) => match unknown.as_str() {
-                "int8" => Ok(Self::I8),
-                "int16" => Ok(Self::I16),
-                "int32" => Ok(Self::I32),
-                "int64" => Ok(Self::I64),
-                "int128" => Ok(Self::I128),
-                "uint8" => Ok(Self::U8),
-                "uint16" => Ok(Self::U16),
-                "uint32" => Ok(Self::U32),
-                "uint64" => Ok(Self::U64),
-                "uint128" => Ok(Self::U128),
-                unknown => Err(Some(unknown)),
-            },
-            IntegerTypeFormat::Empty => Err(None),
-        }
-    }
-}
