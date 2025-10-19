@@ -8,24 +8,6 @@ pub enum TypeDef {
     Inline(syn::Type),
 }
 
-impl TypeDef {
-    pub fn from_schema(schema: &Schema) -> Result<Self, &'static str> {
-        match &schema.schema_kind {
-            SchemaKind::Type(Type::String(_string_type)) => todo!(),
-            SchemaKind::Type(Type::Number(_number_type)) => todo!(),
-            SchemaKind::Type(Type::Integer(integer_type)) => Ok(Self::from(integer_type)),
-            SchemaKind::Type(Type::Object(_object_type)) => todo!(),
-            SchemaKind::Type(Type::Array(_array_type)) => todo!(),
-            SchemaKind::Type(Type::Boolean(boolean_type)) => Ok(Self::from(boolean_type)),
-            SchemaKind::OneOf { one_of: _ } => todo!(),
-            SchemaKind::AllOf { all_of: _ } => todo!(),
-            SchemaKind::AnyOf { any_of: _ } => todo!(),
-            SchemaKind::Not { not: _ } => todo!(),
-            SchemaKind::Any(_any_schema) => todo!(),
-        }
-    }
-}
-
 impl From<&openapiv3::IntegerType> for TypeDef {
     fn from(integer_type: &openapiv3::IntegerType) -> Self {
         let &openapiv3::IntegerType {

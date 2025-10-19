@@ -1,7 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
+use openapiv3::{Schema, SchemaKind, Type};
 use slotmap::{SlotMap, new_key_type};
 
+use crate::ReferenceResolver;
 use crate::type_ref::TypeRef;
 
 new_key_type! { pub struct TypeId; }
@@ -100,6 +102,24 @@ pub enum IntegerKind {
 }
 
 impl TypeGraph {
+    pub fn add_schema(schema: &Schema, resolver: &mut ReferenceResolver<'_>) -> TypeId {
+        match &schema.schema_kind {
+            SchemaKind::Type(Type::String(_string_type)) => todo!(),
+            SchemaKind::Type(Type::Number(_number_type)) => todo!(),
+            SchemaKind::Type(Type::Integer(_integer_type)) => todo!(),
+            SchemaKind::Type(Type::Object(_object_type)) => todo!(),
+            SchemaKind::Type(Type::Array(_array_type)) => todo!(),
+            SchemaKind::Type(Type::Boolean(_boolean_type)) => todo!(),
+            SchemaKind::OneOf { one_of: _ } => todo!(),
+            SchemaKind::AllOf { all_of: _ } => todo!(),
+            SchemaKind::AnyOf { any_of: _ } => todo!(),
+            SchemaKind::Not { not: _ } => todo!(),
+            SchemaKind::Any(any_schema) => {
+                unimplemented!("{}", std::any::type_name_of_val(any_schema))
+            }
+        }
+    }
+
     fn insert(&mut self, type_ref: TypeRef, type_kind: TypeKind) -> TypeId {
         let type_id = self.types.insert(type_kind);
         self.by_ref.insert(type_ref, type_id);
