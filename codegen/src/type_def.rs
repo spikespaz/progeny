@@ -1,23 +1,11 @@
 use openapiv3::{Schema, SchemaKind, Type};
 use syn::parse_quote;
 
+use crate::type_graph::IntegerKind;
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum TypeDef {
     Inline(syn::Type),
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-enum IntegerKind {
-    U8,
-    U16,
-    U32,
-    U64,
-    U128,
-    I8,
-    I16,
-    I32,
-    I64,
-    I128,
 }
 
 impl TypeDef {
