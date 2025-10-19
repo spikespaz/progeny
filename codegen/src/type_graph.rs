@@ -180,16 +180,15 @@ impl TypeGraph {
             .flatten()
             .cloned()
             .collect::<IndexSet<_>>();
+
         let is_unconstrained = format.is_none()
             && pattern.is_none()
             && enumeration.is_empty()
             && (min_length.is_none() || min_length == Some(0))
             && max_length.is_none();
 
-        let type_kind = if is_unconstrained && !is_nullable {
+        let mut type_kind = if is_unconstrained {
             TypeKind::Scalar(String::TYPE)
-        } else if is_unconstrained && is_nullable {
-            TypeKind::Nullable(self.scalar_id(String::TYPE))
         } else {
             TypeKind::Refinement(Refinement::String {
                 format,
@@ -199,6 +198,10 @@ impl TypeGraph {
                 enumeration,
             })
         };
+
+        if is_nullable {
+            type_kind = TypeKind::Nullable(self.insert(type_kind))
+        }
 
         self.insert(type_kind)
     }
