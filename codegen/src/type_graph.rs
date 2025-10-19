@@ -169,8 +169,7 @@ impl TypeGraph {
     }
 
     pub fn get_by_id(&self, type_id: TypeId) -> &TypeKind {
-        debug_assert!(self.types.contains_key(type_id));
-        self.types.get(type_id).unwrap()
+        &self.types[type_id]
     }
 
     pub fn get_by_ref(&self, type_ref: &TypeRef) -> Option<(TypeId, &TypeKind)> {
