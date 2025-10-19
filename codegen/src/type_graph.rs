@@ -117,3 +117,20 @@ impl TypeGraph {
         Some((type_id, type_kind))
     }
 }
+
+type FloatTypeFormat = openapiv3::VariantOrUnknownOrEmpty<openapiv3::NumberFormat>;
+
+impl<'a> TryFrom<&'a FloatTypeFormat> for FloatKind {
+    type Error = Option<&'a str>;
+
+    fn try_from(other: &'a FloatTypeFormat) -> Result<Self, Self::Error> {
+        use openapiv3::NumberFormat;
+
+        match other {
+            FloatTypeFormat::Item(NumberFormat::Float) => Ok(Self::F32),
+            FloatTypeFormat::Item(NumberFormat::Double) => Ok(Self::F64),
+            FloatTypeFormat::Unknown(unknown) => Err(Some(unknown.as_str())),
+            FloatTypeFormat::Empty => Err(None),
+        }
+    }
+}
