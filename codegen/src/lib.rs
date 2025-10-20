@@ -12,9 +12,9 @@ use openapiv3::{OpenAPI, Parameter};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
-pub(crate) use __sealed::Sealed;
-pub(crate) use into_cow::IntoCow;
-pub(crate) use resolver::ReferenceResolver;
+pub(crate) use crate::__sealed::Sealed;
+pub(crate) use crate::into_cow::IntoCow;
+pub(crate) use crate::resolver::ReferenceResolver;
 
 #[derive(Debug, Default)]
 pub struct Settings {
