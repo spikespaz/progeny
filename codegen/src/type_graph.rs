@@ -22,6 +22,7 @@ pub struct TypeGraph {
 pub enum TypeKind {
     Anything,
     Scalar(Scalar),
+    Sequence(Sequence),
     Refinement(Refinement),
     Nullable(TypeId),
     Coproduct(Vec<TypeId>),
@@ -37,6 +38,25 @@ pub enum Scalar {
     Float(FloatKind),
     Integer(IntegerKind),
     Boolean,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Sequence {
+    /// Represents a basic `Vec<T>`, optionally refined if `unique`.
+    List { items: TypeId, unique: bool },
+    /// Represents `[T; N]`, optionally refined with `unique`.
+    Exactly {
+        items: TypeId,
+        count: usize,
+        unique: bool,
+    },
+    /// Represents a refined `Vec<T>`.
+    Bounded {
+        items: TypeId,
+        min_items: Option<usize>,
+        max_items: Option<usize>,
+        unique: bool,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
