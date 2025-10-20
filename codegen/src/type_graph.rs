@@ -14,11 +14,13 @@ pub struct TypeGraph {
     types: SlotMap<TypeId, TypeKind>,
     by_ref: HashMap<TypeRef, TypeId>,
     scalar_ids: [TypeId; Scalar::COUNT],
+    anything_id: TypeId,
     uninhabited_id: TypeId,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TypeKind {
+    Anything,
     Scalar(Scalar),
     Refinement(Refinement),
     Nullable(TypeId),
@@ -112,12 +114,14 @@ impl TypeGraph {
             let kind = TypeKind::Scalar(Scalar::TYPES[i]);
             types.insert(kind)
         });
+        let anything_id = types.insert(TypeKind::Anything);
         let uninhabited_id = types.insert(TypeKind::Uninhabited);
 
         Self {
             types,
             by_ref: HashMap::new(),
             scalar_ids,
+            anything_id,
             uninhabited_id,
         }
     }
@@ -142,6 +146,7 @@ impl TypeGraph {
 
     fn insert(&mut self, type_kind: TypeKind) -> TypeId {
         match type_kind {
+            TypeKind::Anything => self.anything_id,
             TypeKind::Scalar(ty) => self.scalar_id(ty),
             TypeKind::Uninhabited => self.uninhabited_id,
             type_kind => self.insert(type_kind),
