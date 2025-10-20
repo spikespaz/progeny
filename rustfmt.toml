@@ -10,4 +10,5 @@ use_field_init_shorthand = true
 
 hex_literal_case = "Upper"
 
+overflow_delimited_expr = true
 single_line_let_else_max_width = 80
