@@ -263,6 +263,19 @@ impl_scalar_types! {
     (bool => Scalar::Boolean);
 }
 
+impl IntegerKind {
+    pub const fn is_signed(self) -> bool {
+        matches!(
+            self,
+            Self::I8 | Self::I16 | Self::I32 | Self::I64 | Self::I128
+        )
+    }
+
+    pub const fn is_unsigned(self) -> bool {
+        !self.is_signed()
+    }
+}
+
 macro_rules! impl_integer_kind {
     ( $( ( $rust_ty:ty => $IntegerKind:pat ) ; )* ) => {
         impl IntegerKind {
