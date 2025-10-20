@@ -14,6 +14,7 @@ pub struct TypeGraph {
     types: SlotMap<TypeId, TypeKind>,
     by_ref: HashMap<TypeRef, TypeId>,
     scalar_ids: [TypeId; Scalar::COUNT],
+    uninhabited_id: TypeId,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -25,6 +26,7 @@ pub enum TypeKind {
     Intersection(Vec<TypeId>),
     Union(Vec<TypeId>),
     Complement(TypeId),
+    Uninhabited,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -110,11 +112,13 @@ impl TypeGraph {
             let kind = TypeKind::Scalar(Scalar::TYPES[i]);
             types.insert(kind)
         });
+        let uninhabited_id = types.insert(TypeKind::Uninhabited);
 
         Self {
             types,
             by_ref: HashMap::new(),
             scalar_ids,
+            uninhabited_id,
         }
     }
 
@@ -137,10 +141,10 @@ impl TypeGraph {
     }
 
     fn insert(&mut self, type_kind: TypeKind) -> TypeId {
-        if let TypeKind::Scalar(ty) = type_kind {
-            self.scalar_id(ty)
-        } else {
-            self.types.insert(type_kind)
+        match type_kind {
+            TypeKind::Scalar(ty) => self.scalar_id(ty),
+            TypeKind::Uninhabited => self.uninhabited_id,
+            type_kind => self.insert(type_kind),
         }
     }
 
@@ -152,6 +156,10 @@ impl TypeGraph {
 
     pub fn scalar_id(&self, ty: Scalar) -> TypeId {
         self.scalar_ids[ty.index()]
+    }
+
+    pub fn uninhabited_id(&self) -> TypeId {
+        self.uninhabited_id
     }
 
     pub fn get_by_id(&self, type_id: TypeId) -> &TypeKind {
