@@ -263,6 +263,43 @@ impl_scalar_types! {
     (bool => Scalar::Boolean);
 }
 
+macro_rules! impl_integer_kind {
+    ( $( ( $rust_ty:ty => $IntegerKind:pat ) ; )* ) => {
+        impl IntegerKind {
+            pub const fn min(self) -> i128 {
+                match self {
+                    $($IntegerKind => <$rust_ty>::MIN as i128,)*
+                }
+            }
+
+            pub const fn max(self) -> u128 {
+                match self {
+                    $($IntegerKind => <$rust_ty>::MAX as u128,)*
+                }
+            }
+
+            pub const fn bits(self) -> u32 {
+                match self {
+                    $($IntegerKind => <$rust_ty>::BITS as u32,)*
+                }
+            }
+        }
+    };
+}
+
+impl_integer_kind! {
+    (i8 => IntegerKind::I8);
+    (i16 => IntegerKind::I16);
+    (i32 => IntegerKind::I32);
+    (i64 => IntegerKind::I64);
+    (i128 => IntegerKind::I128);
+    (u8 => IntegerKind::U8);
+    (u16 => IntegerKind::U16);
+    (u32 => IntegerKind::U32);
+    (u64 => IntegerKind::U64);
+    (u128 => IntegerKind::U128);
+}
+
 type StringTypeFormat = openapiv3::VariantOrUnknownOrEmpty<openapiv3::StringFormat>;
 
 impl<'a> TryFrom<&'a StringTypeFormat> for StringFormat {
