@@ -169,7 +169,7 @@ impl<'doc> ReferenceResolver<'doc> {
             }
         };
 
-        let handle = cached.clone().handle().ok_or_else(|| Error::TypeMismatch {
+        let handle = cached.handle().ok_or_else(|| Error::TypeMismatch {
             reference: reference.to_owned(),
             found: cached.kind(),
             expected: std::any::type_name::<O>(),
@@ -254,11 +254,11 @@ impl<'a> Component<'a> {
         }
     }
 
-    fn handle<O>(self) -> Option<Handle<'a, O>>
+    fn handle<O>(&self) -> Option<Handle<'a, O>>
     where
         Handle<'a, O>: TryFrom<Self>,
     {
-        Handle::try_from(self).ok()
+        Handle::try_from(self.clone()).ok()
     }
 
     fn promote<O>(&mut self) -> serde_json::Result<&mut Self>
