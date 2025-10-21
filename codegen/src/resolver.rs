@@ -86,7 +86,7 @@ impl<'doc> ReferenceResolver<'doc> {
         new.add_document("", serde_json::to_value(root).unwrap());
 
         if let Some(components) = &root.components {
-            new.cache_components(components);
+            new.cache_components("", components);
         }
 
         new
@@ -100,8 +100,15 @@ impl<'doc> ReferenceResolver<'doc> {
         self.documents.insert(url.into(), document.into_cow());
     }
 
+    /// Given a document URL and [`Components`], eagerly resolve and cache.
+    ///
+    /// For each component, a synthetic reference will be generated with `url`
+    /// as the base, and a fragment that points into the OpenAPI *Components Object*.
+    ///
+    /// The document URL must already have been added by [`add_document`].
+    ///
     /// Ignores errors; they will resurface in `resolve`.
-    pub fn cache_components(&mut self, components: &'doc Components) {
+    pub fn cache_components(&mut self, url: &str, components: &'doc Components) {
         macro_rules! cache {
             ($field:ident, $ref_infix:literal) => {
                 for (name, ref_or) in &components.$field {
@@ -116,8 +123,8 @@ impl<'doc> ReferenceResolver<'doc> {
                     };
                     let id = self.cache.insert(Component::from(handle));
 
-                    let root_ref = format!("#/components/{}/{}", $ref_infix, name);
-                    self.references.insert(root_ref, id);
+                    let synth_ref = format!("{url}#/components/{}/{name}", $ref_infix);
+                    self.references.insert(synth_ref, id);
 
                     if let ReferenceOr::Reference { reference } = ref_or {
                         self.references.insert(reference.clone(), id);
