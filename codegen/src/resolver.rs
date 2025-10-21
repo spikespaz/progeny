@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::rc::Rc;
@@ -37,12 +38,18 @@ pub enum Error {
 
 new_key_type! { pub struct ComponentId; }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ReferenceResolver<'doc> {
     #[expect(unused)]
     root: &'doc OpenAPI,
     /// All documents used for reference resolution, keyed by URL.
     documents: HashMap<String, Cow<'doc, serde_json::Value>>,
+    /// Cached components that have been resolved by this instance or clones.
+    state: Rc<RefCell<CacheState>>,
+}
+
+#[derive(Debug)]
+struct CacheState {
     /// All components resolved thus-far.
     cache: SlotMap<ComponentId, Component>,
     meta: SecondaryMap<ComponentId, ComponentMeta>,
@@ -82,9 +89,11 @@ impl<'doc> ReferenceResolver<'doc> {
         let mut new = Self {
             root,
             documents: HashMap::with_capacity(1),
-            cache: SlotMap::with_key(),
-            meta: SecondaryMap::new(),
-            references: HashMap::new(),
+            state: Rc::new(RefCell::new(CacheState {
+                cache: SlotMap::with_key(),
+                meta: SecondaryMap::new(),
+                references: HashMap::new(),
+            })),
         };
 
         new.add_document("", serde_json::to_value(root).unwrap());
@@ -96,6 +105,11 @@ impl<'doc> ReferenceResolver<'doc> {
         new
     }
 
+    /// Provide a document and a URL with which to resolve new references.
+    ///
+    /// This is per-clone; clones created before this call will fail to resolve
+    /// references to this new document. However, references that have already
+    /// been resolved and cached by one clone will continue to succeed for others.
     pub fn add_document(
         &mut self,
         url: impl Into<String>,
@@ -120,14 +134,16 @@ impl<'doc> ReferenceResolver<'doc> {
 
                     let synth_ref = format!("{url}#/components/{}/{name}", $ref_infix);
 
-                    let meta = self.get_meta_mut(id);
+                    let mut state = self.state.borrow_mut();
+
+                    let meta = state.get_meta_mut(id);
                     meta.names.push((synth_ref.clone(), name.clone()));
                     meta.references.push(synth_ref.clone());
 
-                    self.references.insert(synth_ref, id);
+                    state.references.insert(synth_ref, id);
 
                     if let ReferenceOr::Reference { reference } = ref_or {
-                        self.references.insert(reference.clone(), id);
+                        state.references.insert(reference.clone(), id);
                     }
                 }
             };
@@ -157,8 +173,9 @@ impl<'doc> ReferenceResolver<'doc> {
             // Inline items beget no synthetic references; the returned
             // `ComponentId` is an anchor for future metadata.
             ReferenceOr::Item(object) => {
+                let mut state = self.state.borrow_mut();
                 let component = Component::from(object.borrow().clone());
-                let id = self.cache.insert(component.clone());
+                let id = state.cache.insert(component.clone());
                 Ok((id, component.handle().unwrap()))
             }
         }
@@ -169,8 +186,10 @@ impl<'doc> ReferenceResolver<'doc> {
     where
         O: ComponentObject,
     {
-        let (id, handle) = if let Some(&id) = self.references.get(reference) {
-            let cached = self.cache.get_mut(id).unwrap();
+        let mut state = self.state.borrow_mut();
+
+        let (id, handle) = if let Some(&id) = state.references.get(reference) {
+            let cached = &mut state.cache[id];
             cached.promote::<O>().map_err(|e| Error::Deserialize {
                 reference: reference.to_owned(),
                 source: e,
@@ -186,23 +205,15 @@ impl<'doc> ReferenceResolver<'doc> {
         } else {
             let component = Component::from(Self::resolve_::<O>(reference, &self.documents)?);
             let handle = component.handle().unwrap();
-            let id = self.cache.insert(component);
+            let id = state.cache.insert(component);
 
             (id, handle)
         };
 
-        self.get_meta_mut(id).references.push(reference.to_owned());
-        self.references.insert(reference.to_owned(), id);
+        state.get_meta_mut(id).references.push(reference.to_owned());
+        state.references.insert(reference.to_owned(), id);
 
         Ok((id, handle))
-    }
-
-    fn get_meta_mut(&mut self, id: ComponentId) -> &mut ComponentMeta {
-        use slotmap::secondary::Entry;
-        match self.meta.entry(id).unwrap() {
-            Entry::Occupied(entry) => entry.into_mut(),
-            Entry::Vacant(slot) => slot.insert(ComponentMeta::default()),
-        }
     }
 
     /// Private, bypasses the cache.
@@ -238,6 +249,16 @@ impl<'doc> ReferenceResolver<'doc> {
             reference: reference.to_owned(),
             source: e,
         })
+    }
+}
+
+impl CacheState {
+    fn get_meta_mut(&mut self, id: ComponentId) -> &mut ComponentMeta {
+        use slotmap::secondary::Entry;
+        match self.meta.entry(id).unwrap() {
+            Entry::Occupied(entry) => entry.into_mut(),
+            Entry::Vacant(slot) => slot.insert(ComponentMeta::default()),
+        }
     }
 }
 
