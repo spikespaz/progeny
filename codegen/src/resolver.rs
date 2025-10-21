@@ -44,34 +44,28 @@ pub struct ReferenceResolver<'doc> {
     /// All documents used for reference resolution, keyed by URL.
     documents: HashMap<String, Cow<'doc, serde_json::Value>>,
     /// All components resolved thus-far.
-    cache: SlotMap<ComponentId, Component<'doc>>,
+    cache: SlotMap<ComponentId, Component>,
     /// Lookup mapping of reference to component.
     references: HashMap<String, ComponentId>,
 }
 
 #[derive(Clone, Debug)]
-pub enum Handle<'a, T> {
-    Borrowed(&'a T),
-    Shared(Rc<T>),
-}
-
-#[derive(Clone, Debug)]
-pub enum Component<'a> {
-    Schema(Handle<'a, openapiv3::Schema>),
-    Response(Handle<'a, openapiv3::Response>),
-    Parameter(Handle<'a, openapiv3::Parameter>),
-    Example(Handle<'a, openapiv3::Example>),
-    RequestBody(Handle<'a, openapiv3::RequestBody>),
-    Header(Handle<'a, openapiv3::Header>),
-    SecurityScheme(Handle<'a, openapiv3::SecurityScheme>),
-    Link(Handle<'a, openapiv3::Link>),
-    Callback(Handle<'a, openapiv3::Callback>),
+pub enum Component {
+    Schema(Rc<openapiv3::Schema>),
+    Response(Rc<openapiv3::Response>),
+    Parameter(Rc<openapiv3::Parameter>),
+    Example(Rc<openapiv3::Example>),
+    RequestBody(Rc<openapiv3::RequestBody>),
+    Header(Rc<openapiv3::Header>),
+    SecurityScheme(Rc<openapiv3::SecurityScheme>),
+    Link(Rc<openapiv3::Link>),
+    Callback(Rc<openapiv3::Callback>),
     /// "Path Item Object" is not technically a recognized component in OAS 3.0.x,
     /// but the specification still allows for references to them.
     /// This type will be a component in OAS 3.1.0, which warrants an exception presently.
-    PathItem(Handle<'a, openapiv3::PathItem>),
+    PathItem(Rc<openapiv3::PathItem>),
     /// The name `Other` might be misleading, this is just yet deserialized.
-    Other(Handle<'a, serde_json::Value>),
+    Other(Rc<serde_json::Value>),
 }
 
 impl<'doc> ReferenceResolver<'doc> {
@@ -135,14 +129,11 @@ impl<'doc> ReferenceResolver<'doc> {
         cache!(callbacks, "callbacks");
     }
 
-    pub fn resolve<O>(
-        &mut self,
-        ref_or: &ReferenceOr<O>,
-    ) -> Result<(ComponentId, Handle<'doc, O>), Error>
+    pub fn resolve<O>(&mut self, ref_or: &ReferenceOr<O>) -> Result<(ComponentId, Rc<O>), Error>
     where
         O: Clone + serde::de::DeserializeOwned,
-        Component<'doc>: From<O>,
-        Handle<'doc, O>: TryFrom<Component<'doc>>,
+        Component: From<O>,
+        Rc<O>: TryFrom<Component>,
     {
         match ref_or {
             ReferenceOr::Reference { reference } => self.resolve_reference(reference),
@@ -156,14 +147,11 @@ impl<'doc> ReferenceResolver<'doc> {
         }
     }
 
-    pub fn resolve_reference<O>(
-        &mut self,
-        reference: &str,
-    ) -> Result<(ComponentId, Handle<'doc, O>), Error>
+    pub fn resolve_reference<O>(&mut self, reference: &str) -> Result<(ComponentId, Rc<O>), Error>
     where
         O: serde::de::DeserializeOwned,
-        Component<'doc>: From<O>,
-        Handle<'doc, O>: TryFrom<Component<'doc>>,
+        Component: From<O>,
+        Rc<O>: TryFrom<Component>,
     {
         let (id, handle) = if let Some(&id) = self.references.get(reference) {
             let cached = self.cache.get_mut(id).unwrap();
@@ -228,30 +216,7 @@ impl<'doc> ReferenceResolver<'doc> {
     }
 }
 
-impl<T> Deref for Handle<'_, T> {
-    type Target = T;
-
-    fn deref(&self) -> &T {
-        match *self {
-            Handle::Borrowed(borrow) => borrow,
-            Handle::Shared(ref rc) => rc.as_ref(),
-        }
-    }
-}
-
-impl<T> From<T> for Handle<'_, T> {
-    fn from(other: T) -> Self {
-        Handle::Shared(Rc::new(other))
-    }
-}
-
-impl<'a, T> From<&'a T> for Handle<'a, T> {
-    fn from(other: &'a T) -> Self {
-        Handle::Borrowed(other)
-    }
-}
-
-impl<'a> Component<'a> {
+impl Component {
     fn kind(&self) -> &'static str {
         match self {
             Component::Schema(_) => "Schema",
@@ -268,11 +233,11 @@ impl<'a> Component<'a> {
         }
     }
 
-    fn handle<O>(&self) -> Option<Handle<'a, O>>
+    fn handle<O>(&self) -> Option<Rc<O>>
     where
-        Handle<'a, O>: TryFrom<Self>,
+        Rc<O>: TryFrom<Self>,
     {
-        Handle::try_from(self.clone()).ok()
+        Rc::<O>::try_from(self.clone()).ok()
     }
 
     fn promote<O>(&mut self) -> serde_json::Result<&mut Self>
@@ -291,30 +256,18 @@ impl<'a> Component<'a> {
 
 macro_rules! impl_component_variant {
     ($Variant:ident <-> $Type:ty) => {
-        impl From<$Type> for Component<'_> {
+        impl From<$Type> for Component {
             fn from(other: $Type) -> Self {
-                Self::$Variant(Handle::from(other))
+                Self::$Variant(Rc::new(other))
             }
         }
 
-        impl<'a> From<&'a $Type> for Component<'a> {
-            fn from(other: &'a $Type) -> Self {
-                Self::$Variant(Handle::from(other))
-            }
-        }
-
-        impl<'a> From<Handle<'a, $Type>> for Component<'a> {
-            fn from(other: Handle<'a, $Type>) -> Self {
-                Self::$Variant(other)
-            }
-        }
-
-        impl<'a> TryFrom<Component<'a>> for Handle<'a, $Type> {
+        impl TryFrom<Component> for Rc<$Type> {
             type Error = ();
 
-            fn try_from(other: Component<'a>) -> Result<Self, Self::Error> {
+            fn try_from(other: Component) -> Result<Self, Self::Error> {
                 match other {
-                    Component::$Variant(handle) => Ok(handle.clone()),
+                    Component::$Variant(rc) => Ok(rc.clone()),
                     _ => Err(()),
                 }
             }
