@@ -50,7 +50,7 @@ pub struct ReferenceResolver<'doc> {
 }
 
 #[derive(Clone, Debug)]
-pub enum Component {
+enum Component {
     Schema(Rc<openapiv3::Schema>),
     Response(Rc<openapiv3::Response>),
     Parameter(Rc<openapiv3::Parameter>),
