@@ -129,11 +129,10 @@ impl<'doc> ReferenceResolver<'doc> {
         cache!(callbacks, "callbacks");
     }
 
+    #[allow(private_bounds)]
     pub fn resolve<O>(&mut self, ref_or: &ReferenceOr<O>) -> Result<(ComponentId, Rc<O>), Error>
     where
-        O: Clone + serde::de::DeserializeOwned,
-        Component: From<O>,
-        Rc<O>: TryFrom<Component>,
+        O: ComponentObject,
     {
         match ref_or {
             ReferenceOr::Reference { reference } => self.resolve_reference(reference),
@@ -147,11 +146,10 @@ impl<'doc> ReferenceResolver<'doc> {
         }
     }
 
+    #[allow(private_bounds)]
     pub fn resolve_reference<O>(&mut self, reference: &str) -> Result<(ComponentId, Rc<O>), Error>
     where
-        O: serde::de::DeserializeOwned,
-        Component: From<O>,
-        Rc<O>: TryFrom<Component>,
+        O: ComponentObject,
     {
         let (id, handle) = if let Some(&id) = self.references.get(reference) {
             let cached = self.cache.get_mut(id).unwrap();
@@ -168,7 +166,7 @@ impl<'doc> ReferenceResolver<'doc> {
 
             (id, handle)
         } else {
-            let component = Component::from(Self::resolve_(reference, &self.documents)?);
+            let component = Component::from(Self::resolve_::<O>(reference, &self.documents)?);
             let handle = component.handle().unwrap();
             let id = self.cache.insert(component);
 
@@ -233,20 +231,13 @@ impl Component {
         }
     }
 
-    fn handle<O>(&self) -> Option<Rc<O>>
-    where
-        Rc<O>: TryFrom<Self>,
-    {
-        Rc::<O>::try_from(self.clone()).ok()
+    fn handle<O: ComponentObject>(&self) -> Option<Rc<O>> {
+        O::from_component(self)
     }
 
-    fn promote<O>(&mut self) -> serde_json::Result<&mut Self>
-    where
-        O: serde::de::DeserializeOwned,
-        Self: From<O>,
-    {
+    fn promote<O: ComponentObject>(&mut self) -> serde_json::Result<&mut Self> {
         if let Self::Other(handle) = &self {
-            let object = serde_json::from_value(handle.deref().clone())?;
+            let object = serde_json::from_value::<O>(handle.deref().clone())?;
             *self = Self::from(object);
         }
 
@@ -254,21 +245,30 @@ impl Component {
     }
 }
 
+trait ComponentObject: Clone + serde::de::DeserializeOwned {
+    fn into_component(self) -> Component;
+
+    fn from_component(other: &Component) -> Option<Rc<Self>>;
+}
+
+impl<O: ComponentObject> From<O> for Component {
+    fn from(other: O) -> Self {
+        other.into_component()
+    }
+}
+
 macro_rules! impl_component_variant {
     ($Variant:ident <-> $Type:ty) => {
-        impl From<$Type> for Component {
-            fn from(other: $Type) -> Self {
-                Self::$Variant(Rc::new(other))
+        impl ComponentObject for $Type {
+            fn into_component(self) -> Component {
+                Component::$Variant(Rc::new(self))
             }
-        }
 
-        impl TryFrom<Component> for Rc<$Type> {
-            type Error = ();
-
-            fn try_from(other: Component) -> Result<Self, Self::Error> {
-                match other {
-                    Component::$Variant(rc) => Ok(rc.clone()),
-                    _ => Err(()),
+            fn from_component(other: &Component) -> Option<Rc<Self>> {
+                if let Component::$Variant(rc) = other {
+                    Some(rc.clone())
+                } else {
+                    None
                 }
             }
         }
