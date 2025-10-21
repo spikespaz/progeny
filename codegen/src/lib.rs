@@ -50,7 +50,7 @@ impl<'a> Generator<'a> {
         let mut tokens = TokenStream::new();
 
         for (template, path) in &self.spec.paths.paths {
-            let path = self.resolver.resolve(path)?;
+            let (_, path) = self.resolver.resolve(path)?;
             for (method, op) in path.iter() {
                 let fn_name = {
                     let mut name = match &op.operation_id {
@@ -66,7 +66,7 @@ impl<'a> Generator<'a> {
                 let mut path_args = Vec::new();
                 let mut query_args = Vec::new();
                 for param in &op.parameters {
-                    let param = self.resolver.resolve(param)?;
+                    let (_, param) = self.resolver.resolve(param)?;
                     match param.deref() {
                         Parameter::Path {
                             parameter_data,

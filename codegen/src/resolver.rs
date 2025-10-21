@@ -35,7 +35,7 @@ pub enum Error {
     },
 }
 
-new_key_type! { struct ComponentId; }
+new_key_type! { pub struct ComponentId; }
 
 #[derive(Debug)]
 pub struct ReferenceResolver<'doc> {
@@ -144,7 +144,10 @@ impl<'doc> ReferenceResolver<'doc> {
         cache!(callbacks, "callbacks");
     }
 
-    pub fn resolve<O>(&mut self, ref_or: &ReferenceOr<O>) -> Result<Handle<'doc, O>, Error>
+    pub fn resolve<O>(
+        &mut self,
+        ref_or: &ReferenceOr<O>,
+    ) -> Result<(ComponentId, Handle<'doc, O>), Error>
     where
         O: Clone + serde::de::DeserializeOwned,
         Component<'doc>: From<O>,
@@ -152,11 +155,20 @@ impl<'doc> ReferenceResolver<'doc> {
     {
         match ref_or {
             ReferenceOr::Reference { reference } => self.resolve_reference(reference),
-            ReferenceOr::Item(object) => Ok(Handle::from(object.clone())),
+            // Inline items beget no synthetic references; the returned
+            // `ComponentId` is an anchor for future metadata.
+            ReferenceOr::Item(object) => {
+                let component = Component::from(object.clone());
+                let id = self.cache.insert(component.clone());
+                Ok((id, component.handle().unwrap()))
+            }
         }
     }
 
-    pub fn resolve_reference<O>(&mut self, reference: &str) -> Result<Handle<'doc, O>, Error>
+    pub fn resolve_reference<O>(
+        &mut self,
+        reference: &str,
+    ) -> Result<(ComponentId, Handle<'doc, O>), Error>
     where
         O: serde::de::DeserializeOwned,
         Component<'doc>: From<O>,
@@ -186,7 +198,7 @@ impl<'doc> ReferenceResolver<'doc> {
 
         self.references.insert(reference.to_owned(), id);
 
-        Ok(handle)
+        Ok((id, handle))
     }
 
     /// Private, bypasses the cache.
