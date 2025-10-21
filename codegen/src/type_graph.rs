@@ -169,7 +169,7 @@ impl TypeGraph {
             TypeKind::Anything => self.anything_id,
             TypeKind::Scalar(ty) => self.scalar_id(ty),
             TypeKind::Uninhabited => self.uninhabited_id,
-            type_kind => self.insert(type_kind),
+            type_kind => self.types.insert(type_kind),
         }
     }
 
