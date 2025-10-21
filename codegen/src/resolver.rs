@@ -115,8 +115,13 @@ impl<'doc> ReferenceResolver<'doc> {
                         ReferenceOr::Item(object) => Handle::Borrowed(object),
                     };
                     let id = self.cache.insert(Component::from(handle));
+
                     let root_ref = format!("#/components/{}/{}", $ref_infix, name);
                     self.references.insert(root_ref, id);
+
+                    if let ReferenceOr::Reference { reference } = ref_or {
+                        self.references.insert(reference.clone(), id);
+                    }
                 }
             };
         }
