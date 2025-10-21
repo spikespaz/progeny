@@ -5,7 +5,7 @@ use std::rc::Rc;
 
 use openapiv3::{Components, OpenAPI, ReferenceOr};
 use percent_encoding::percent_decode_str;
-use slotmap::{SlotMap, new_key_type};
+use slotmap::{SecondaryMap, SlotMap, new_key_type};
 
 use crate::IntoCow;
 
@@ -45,6 +45,7 @@ pub struct ReferenceResolver<'doc> {
     documents: HashMap<String, Cow<'doc, serde_json::Value>>,
     /// All components resolved thus-far.
     cache: SlotMap<ComponentId, Component>,
+    meta: SecondaryMap<ComponentId, ComponentMeta>,
     /// Lookup mapping of reference to component.
     references: HashMap<String, ComponentId>,
 }
@@ -68,12 +69,21 @@ enum Component {
     Other(Rc<serde_json::Value>),
 }
 
+#[derive(Debug, Default)]
+struct ComponentMeta {
+    /// All references that point to this component.
+    references: Vec<String>,
+    /// Mapping of reference to name, for all names seen for this component.
+    names: Vec<(String, String)>,
+}
+
 impl<'doc> ReferenceResolver<'doc> {
     pub fn new(root: &'doc OpenAPI) -> Self {
         let mut new = Self {
             root,
             documents: HashMap::with_capacity(1),
             cache: SlotMap::with_key(),
+            meta: SecondaryMap::new(),
             references: HashMap::new(),
         };
 
@@ -109,6 +119,11 @@ impl<'doc> ReferenceResolver<'doc> {
                     let Ok((id, _)) = self.resolve(ref_or) else { continue };
 
                     let synth_ref = format!("{url}#/components/{}/{name}", $ref_infix);
+
+                    let meta = self.get_meta_mut(id);
+                    meta.names.push((synth_ref.clone(), name.clone()));
+                    meta.references.push(synth_ref.clone());
+
                     self.references.insert(synth_ref, id);
 
                     if let ReferenceOr::Reference { reference } = ref_or {
@@ -173,9 +188,18 @@ impl<'doc> ReferenceResolver<'doc> {
             (id, handle)
         };
 
+        self.get_meta_mut(id).references.push(reference.to_owned());
         self.references.insert(reference.to_owned(), id);
 
         Ok((id, handle))
+    }
+
+    fn get_meta_mut(&mut self, id: ComponentId) -> &mut ComponentMeta {
+        use slotmap::secondary::Entry;
+        match self.meta.entry(id).unwrap() {
+            Entry::Occupied(entry) => entry.into_mut(),
+            Entry::Vacant(slot) => slot.insert(ComponentMeta::default()),
+        }
     }
 
     /// Private, bypasses the cache.
