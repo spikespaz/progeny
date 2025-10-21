@@ -144,31 +144,23 @@ impl<'doc> ReferenceResolver<'doc> {
         cache!(callbacks, "callbacks");
     }
 
-    pub fn resolve<'item, O>(
-        &mut self,
-        ref_or: &'item ReferenceOr<O>,
-    ) -> Result<Handle<'item, O>, Error>
+    pub fn resolve<O>(&mut self, ref_or: &ReferenceOr<O>) -> Result<Handle<'doc, O>, Error>
     where
-        'doc: 'item,
-        O: serde::de::DeserializeOwned,
+        O: Clone + serde::de::DeserializeOwned,
         Component<'doc>: From<O>,
-        Handle<'item, O>: TryFrom<Component<'item>>,
+        Handle<'doc, O>: TryFrom<Component<'doc>>,
     {
         match ref_or {
             ReferenceOr::Reference { reference } => self.resolve_reference(reference),
-            ReferenceOr::Item(object) => Ok(Handle::from(object)),
+            ReferenceOr::Item(object) => Ok(Handle::from(object.clone())),
         }
     }
 
-    pub fn resolve_reference<'item, O>(
-        &mut self,
-        reference: &str,
-    ) -> Result<Handle<'item, O>, Error>
+    pub fn resolve_reference<O>(&mut self, reference: &str) -> Result<Handle<'doc, O>, Error>
     where
-        'doc: 'item,
         O: serde::de::DeserializeOwned,
         Component<'doc>: From<O>,
-        Handle<'item, O>: TryFrom<Component<'item>>,
+        Handle<'doc, O>: TryFrom<Component<'doc>>,
     {
         let (id, handle) = if let Some(&id) = self.references.get(reference) {
             let cached = self.cache.get_mut(id).unwrap();
