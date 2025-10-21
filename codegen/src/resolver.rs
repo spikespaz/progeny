@@ -145,7 +145,10 @@ impl<'doc> ReferenceResolver<'doc> {
     }
 
     #[allow(private_bounds)]
-    pub fn resolve<O>(&mut self, ref_or: &ReferenceOr<O>) -> Result<(ComponentId, Rc<O>), Error>
+    pub fn resolve<O>(
+        &mut self,
+        ref_or: &ReferenceOr<impl std::borrow::Borrow<O>>,
+    ) -> Result<(ComponentId, Rc<O>), Error>
     where
         O: ComponentObject,
     {
@@ -154,7 +157,7 @@ impl<'doc> ReferenceResolver<'doc> {
             // Inline items beget no synthetic references; the returned
             // `ComponentId` is an anchor for future metadata.
             ReferenceOr::Item(object) => {
-                let component = Component::from(object.clone());
+                let component = Component::from(object.borrow().clone());
                 let id = self.cache.insert(component.clone());
                 Ok((id, component.handle().unwrap()))
             }
