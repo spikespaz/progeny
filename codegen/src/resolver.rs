@@ -112,16 +112,7 @@ impl<'doc> ReferenceResolver<'doc> {
         macro_rules! cache {
             ($field:ident, $ref_infix:literal) => {
                 for (name, ref_or) in &components.$field {
-                    let handle = match ref_or {
-                        ReferenceOr::Reference { reference } => {
-                            let Ok(object) = Self::resolve_(reference, &self.documents) else {
-                                continue;
-                            };
-                            Handle::Shared(Rc::new(object))
-                        }
-                        ReferenceOr::Item(object) => Handle::Borrowed(object),
-                    };
-                    let id = self.cache.insert(Component::from(handle));
+                    let Ok((id, _)) = self.resolve(ref_or) else { continue };
 
                     let synth_ref = format!("{url}#/components/{}/{name}", $ref_infix);
                     self.references.insert(synth_ref, id);
