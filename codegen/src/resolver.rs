@@ -5,6 +5,7 @@ use std::rc::Rc;
 
 use openapiv3::{Components, OpenAPI, ReferenceOr};
 use percent_encoding::percent_decode_str;
+use slotmap::{SlotMap, new_key_type};
 
 use crate::IntoCow;
 
@@ -34,12 +35,18 @@ pub enum Error {
     },
 }
 
+new_key_type! { struct ComponentId; }
+
 #[derive(Debug)]
 pub struct ReferenceResolver<'doc> {
     #[expect(unused)]
     root: &'doc OpenAPI,
+    /// All documents used for reference resolution, keyed by URL.
     documents: HashMap<String, Cow<'doc, serde_json::Value>>,
-    cache: HashMap<String, Component<'doc>>,
+    /// All components resolved thus-far.
+    cache: SlotMap<ComponentId, Component<'doc>>,
+    /// Lookup mapping of reference to component.
+    references: HashMap<String, ComponentId>,
 }
 
 #[derive(Clone, Debug)]
@@ -72,7 +79,8 @@ impl<'doc> ReferenceResolver<'doc> {
         let mut new = Self {
             root,
             documents: HashMap::with_capacity(1),
-            cache: HashMap::new(),
+            cache: SlotMap::with_key(),
+            references: HashMap::new(),
         };
 
         new.add_document("", serde_json::to_value(root).unwrap());
@@ -96,34 +104,32 @@ impl<'doc> ReferenceResolver<'doc> {
     pub fn cache_components(&mut self, components: &'doc Components) {
         macro_rules! cache {
             ($field:ident, $ref_infix:literal) => {
-                components.$field.iter().filter_map(|(name, ref_or)| {
+                for (name, ref_or) in &components.$field {
                     let handle = match ref_or {
                         ReferenceOr::Reference { reference } => {
-                            let object = Self::resolve_(reference, &self.documents).ok()?;
+                            let Ok(object) = Self::resolve_(reference, &self.documents) else {
+                                continue;
+                            };
                             Handle::Shared(Rc::new(object))
                         }
                         ReferenceOr::Item(object) => Handle::Borrowed(object),
                     };
-                    Some((
-                        format!("#/components/{}/{}", $ref_infix, name),
-                        Component::from(handle),
-                    ))
-                })
+                    let id = self.cache.insert(Component::from(handle));
+                    let root_ref = format!("#/components/{}/{}", $ref_infix, name);
+                    self.references.insert(root_ref, id);
+                }
             };
         }
 
-        self.cache.extend(
-            std::iter::empty()
-                .chain(cache!(schemas, "schemas"))
-                .chain(cache!(responses, "responses"))
-                .chain(cache!(parameters, "parameters"))
-                .chain(cache!(examples, "examples"))
-                .chain(cache!(request_bodies, "requestBodies"))
-                .chain(cache!(headers, "headers"))
-                .chain(cache!(security_schemes, "securitySchemes"))
-                .chain(cache!(links, "links"))
-                .chain(cache!(callbacks, "callbacks")),
-        );
+        cache!(schemas, "schemas");
+        cache!(responses, "responses");
+        cache!(parameters, "parameters");
+        cache!(examples, "examples");
+        cache!(request_bodies, "requestBodies");
+        cache!(headers, "headers");
+        cache!(security_schemes, "securitySchemes");
+        cache!(links, "links");
+        cache!(callbacks, "callbacks");
     }
 
     pub fn resolve<'item, O>(
@@ -152,28 +158,29 @@ impl<'doc> ReferenceResolver<'doc> {
         Component<'doc>: From<O>,
         Handle<'item, O>: TryFrom<Component<'item>>,
     {
-        use std::collections::hash_map::Entry;
+        let (id, handle) = if let Some(&id) = self.references.get(reference) {
+            let cached = self.cache.get_mut(id).unwrap();
+            cached.promote::<O>().map_err(|e| Error::Deserialize {
+                reference: reference.to_owned(),
+                source: e,
+            })?;
 
-        // <https://docs.rs/polonius-the-crab/latest/polonius_the_crab/#explanation>
-        let cached = match self.cache.entry(reference.to_owned()) {
-            Entry::Occupied(entry) => {
-                let cached = entry.into_mut();
-                cached.promote().map_err(|e| Error::Deserialize {
-                    reference: reference.to_owned(),
-                    source: e,
-                })?
-            }
-            Entry::Vacant(slot) => {
-                let object = Self::resolve_(reference, &self.documents)?;
-                slot.insert(Component::from(object))
-            }
+            let handle = cached.handle().ok_or_else(|| Error::TypeMismatch {
+                reference: reference.to_owned(),
+                found: cached.kind(),
+                expected: std::any::type_name::<O>(),
+            })?;
+
+            (id, handle)
+        } else {
+            let component = Component::from(Self::resolve_(reference, &self.documents)?);
+            let handle = component.handle().unwrap();
+            let id = self.cache.insert(component);
+
+            (id, handle)
         };
 
-        let handle = cached.handle().ok_or_else(|| Error::TypeMismatch {
-            reference: reference.to_owned(),
-            found: cached.kind(),
-            expected: std::any::type_name::<O>(),
-        })?;
+        self.references.insert(reference.to_owned(), id);
 
         Ok(handle)
     }
