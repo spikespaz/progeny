@@ -1,11 +1,9 @@
-use std::collections::HashMap;
-
 use indexmap::IndexSet;
 use openapiv3::{Schema, SchemaKind, StringType, Type};
-use slotmap::{SlotMap, new_key_type};
+use slotmap::{SecondaryMap, SlotMap, new_key_type};
 
 use crate::ReferenceResolver;
-use crate::type_ref::TypeRef;
+use crate::resolver::ComponentId;
 
 new_key_type! { pub struct TypeId; }
 
@@ -13,7 +11,7 @@ new_key_type! { pub struct TypeId; }
 pub struct TypeGraph<'doc> {
     resolver: ReferenceResolver<'doc>,
     types: SlotMap<TypeId, TypeKind>,
-    by_ref: HashMap<TypeRef, TypeId>,
+    by_component: SecondaryMap<ComponentId, TypeId>,
     scalar_ids: [TypeId; Scalar::COUNT],
     anything_id: TypeId,
     uninhabited_id: TypeId,
@@ -141,7 +139,7 @@ impl<'doc> TypeGraph<'doc> {
         Self {
             resolver,
             types,
-            by_ref: HashMap::new(),
+            by_component: SecondaryMap::new(),
             scalar_ids,
             anything_id,
             uninhabited_id,
@@ -175,12 +173,6 @@ impl<'doc> TypeGraph<'doc> {
         }
     }
 
-    fn insert_named(&mut self, type_ref: TypeRef, type_kind: TypeKind) -> TypeId {
-        let type_id = self.insert(type_kind);
-        self.by_ref.insert(type_ref, type_id);
-        type_id
-    }
-
     pub fn scalar_id(&self, ty: Scalar) -> TypeId {
         self.scalar_ids[ty.index()]
     }
@@ -193,8 +185,8 @@ impl<'doc> TypeGraph<'doc> {
         &self.types[type_id]
     }
 
-    pub fn get_by_ref(&self, type_ref: &TypeRef) -> Option<(TypeId, &TypeKind)> {
-        let type_id = *self.by_ref.get(type_ref)?;
+    pub fn get_by_component(&self, component_id: ComponentId) -> Option<(TypeId, &TypeKind)> {
+        let type_id = *self.by_component.get(component_id)?;
         let type_kind = self.get_by_id(type_id);
         Some((type_id, type_kind))
     }
