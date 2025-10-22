@@ -1,11 +1,14 @@
+use std::num::NonZeroU64;
+
 use indexmap::IndexSet;
-use openapiv3::{ArrayType, BooleanType, Schema, SchemaKind, StringType, Type};
+use openapiv3::{ArrayType, BooleanType, IntegerType, Schema, SchemaKind, StringType, Type};
 use slotmap::{SecondaryMap, SlotMap, new_key_type};
 
 use super::kinds::{Refinement, Scalar, Sequence, StringFormat};
 use super::{ScalarType as _, TypeKind};
 use crate::ReferenceResolver;
 use crate::resolver::ComponentId;
+use crate::type_model::kinds::IntegerKind;
 
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -54,7 +57,7 @@ impl<'doc> TypeGraph<'doc> {
         match &schema.schema_kind {
             SchemaKind::Type(Type::String(string_type)) => Ok(self.add_string_type(string_type)),
             SchemaKind::Type(Type::Number(_number_type)) => todo!(),
-            SchemaKind::Type(Type::Integer(_integer_type)) => todo!(),
+            SchemaKind::Type(Type::Integer(integer_type)) => self.add_integer_type(integer_type),
             SchemaKind::Type(Type::Object(_object_type)) => todo!(),
             SchemaKind::Type(Type::Array(array_type)) => self.add_array_type(array_type),
             SchemaKind::Type(Type::Boolean(boolean_type)) => {
@@ -149,6 +152,116 @@ impl<'doc> TypeGraph<'doc> {
         }
 
         self.insert(type_kind)
+    }
+
+    pub fn add_integer_type(&mut self, integer_type: &IntegerType) -> Result<TypeId> {
+        let &IntegerType {
+            ref format,
+            multiple_of,
+            exclusive_minimum: _,
+            exclusive_maximum: _,
+            minimum,
+            maximum,
+            ref enumeration,
+        } = integer_type;
+
+        // <https://datatracker.ietf.org/doc/html/draft-wright-json-schema-validation-00#section-5.1>
+        // <https://github.com/glademiller/openapiv3/pull/97>
+        let multiple_of = match multiple_of {
+            Some(m) if m > 0 => Some(NonZeroU64::new(m as u64).unwrap()),
+            Some(_) => {
+                return Err(Error::InvalidSchema {
+                    reason: "`multipleOf` must be greater than zero",
+                });
+            }
+            None => None,
+        };
+
+        let (integer_kind, format) = IntegerKind::try_from(format)
+            .map_or_else(|special| (None, special), |kind| (Some(kind), None));
+
+        let minimum = minimum.map(|min| (integer_type.exclusive_minimum, min));
+        let maximum = maximum.map(|max| (integer_type.exclusive_maximum, max));
+
+        let is_nullable = enumeration.contains(&None);
+        let enumeration = enumeration
+            .iter()
+            .flatten()
+            .copied()
+            .collect::<IndexSet<_>>();
+
+        let interval_min = minimum.and_then(|(ne, min)| min.checked_add(ne as i64));
+        let interval_max = maximum.and_then(|(ne, max)| max.checked_sub(ne as i64));
+
+        let is_overflow_min = minimum.is_some() && interval_min.is_none();
+        let is_overflow_max = maximum.is_some() && interval_max.is_none();
+
+        let is_non_negative = interval_min
+            .or(minimum.map(|(_, min)| min))
+            .is_some_and(|min| min >= 0);
+
+        // Cast is safe; it came from an `i64` originally.
+        let has_valid_enum = enumeration.iter().any(|&v| {
+            multiple_of.is_none_or(|m| v % m.get() as i64 == 0)
+                && (minimum.is_none_or(|(ne, min)| (ne && v > min) || (!ne && v >= min)))
+                && (maximum.is_none_or(|(ne, max)| (ne && v < max) || (!ne && v <= max)))
+        });
+
+        let is_empty_domain = (!enumeration.is_empty() && !has_valid_enum)
+            || matches!((interval_min, interval_max), (Some(min), Some(max)) if min > max);
+
+        // Policy: widen on overflow
+        let integer_kind = if is_overflow_max && is_non_negative {
+            let Scalar::Integer(integer_kind) = u128::TYPE else { unreachable!() };
+            integer_kind
+        } else if is_overflow_min || is_overflow_max {
+            let Scalar::Integer(integer_kind) = i128::TYPE else { unreachable!() };
+            integer_kind
+        } else {
+            // enum value extrema, causes widen if necessary
+            let enum_min = enumeration.iter().min().copied();
+            let enum_max = enumeration.iter().max().copied();
+            // union extrema, scalar selection
+            let union_min = [interval_min, enum_min].iter().flatten().min().copied();
+            let union_max = [interval_max, enum_max].iter().flatten().max().copied();
+
+            integer_kind.unwrap_or(IntegerKind::from_bounds(union_min, union_max))
+        };
+
+        let multiple_of_one = multiple_of.is_none_or(|m| m.get() == 1);
+
+        let has_exact_min = interval_min.is_some_and(|min| {
+            (integer_kind.is_signed() && min as i128 == integer_kind.min())
+                || (integer_kind.is_unsigned() && min == 0)
+        });
+        let has_exact_max = interval_max.is_some_and(|max| max as u128 == integer_kind.max());
+
+        let is_unconstrained = format.is_none()
+            && multiple_of_one
+            && (minimum.is_none() || has_exact_min)
+            && (maximum.is_none() || has_exact_max)
+            && enumeration.is_empty();
+
+        let mut type_kind = if is_empty_domain {
+            TypeKind::Uninhabited
+        } else if is_unconstrained {
+            TypeKind::Scalar(Scalar::Integer(integer_kind))
+        } else {
+            TypeKind::Refinement(Refinement::Integer {
+                kind: integer_kind,
+                format: format.map(ToOwned::to_owned),
+                multiple_of,
+                minimum,
+                maximum,
+                enumeration,
+            })
+        };
+
+        if is_nullable {
+            type_kind = TypeKind::Nullable(self.insert(type_kind));
+        }
+
+        Ok(self.insert(type_kind))
     }
 
     pub fn add_array_type(&mut self, array_type: &ArrayType) -> Result<TypeId> {
