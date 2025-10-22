@@ -1,5 +1,5 @@
 use indexmap::IndexSet;
-use openapiv3::{ArrayType, Schema, SchemaKind, StringType, Type};
+use openapiv3::{ArrayType, BooleanType, Schema, SchemaKind, StringType, Type};
 use slotmap::{SecondaryMap, SlotMap, new_key_type};
 
 use super::kinds::{Refinement, Scalar, Sequence, StringFormat};
@@ -55,7 +55,9 @@ impl<'doc> TypeGraph<'doc> {
             SchemaKind::Type(Type::Integer(_integer_type)) => todo!(),
             SchemaKind::Type(Type::Object(_object_type)) => todo!(),
             SchemaKind::Type(Type::Array(array_type)) => self.add_array_type(array_type),
-            SchemaKind::Type(Type::Boolean(_boolean_type)) => todo!(),
+            SchemaKind::Type(Type::Boolean(boolean_type)) => {
+                Ok(self.add_boolean_type(boolean_type))
+            }
             SchemaKind::OneOf { one_of: _ } => todo!(),
             SchemaKind::AllOf { all_of: _ } => todo!(),
             SchemaKind::AnyOf { any_of: _ } => todo!(),
@@ -191,5 +193,33 @@ impl<'doc> TypeGraph<'doc> {
         };
 
         Ok(self.insert(TypeKind::Sequence(sequence_kind)))
+    }
+
+    pub fn add_boolean_type(&mut self, boolean_type: &BooleanType) -> TypeId {
+        let BooleanType { enumeration } = boolean_type;
+
+        let is_nullable = enumeration.contains(&None);
+        let has_true = enumeration.contains(&Some(true));
+        let has_false = enumeration.contains(&Some(false));
+
+        let is_unconstrained = enumeration.is_empty() || (has_true && has_false);
+
+        let mut type_kind = if is_unconstrained {
+            TypeKind::Scalar(bool::TYPE)
+        } else if !has_true && !has_false {
+            TypeKind::Uninhabited
+        } else {
+            debug_assert!(has_true ^ has_false);
+            TypeKind::Refinement(Refinement::Boolean {
+                has_true,
+                has_false,
+            })
+        };
+
+        if is_nullable {
+            type_kind = TypeKind::Nullable(self.insert(type_kind))
+        }
+
+        self.insert(type_kind)
     }
 }
