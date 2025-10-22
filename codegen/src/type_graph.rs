@@ -5,6 +5,13 @@ use slotmap::{SecondaryMap, SlotMap, new_key_type};
 use crate::ReferenceResolver;
 use crate::resolver::ComponentId;
 
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum Error {
+    #[error("{0}")]
+    Resolve(#[from] crate::resolver::Error),
+}
+
 new_key_type! { pub struct TypeId; }
 
 #[derive(Debug)]
@@ -146,9 +153,9 @@ impl<'doc> TypeGraph<'doc> {
         }
     }
 
-    pub fn add_schema(&mut self, schema: &Schema) -> TypeId {
+    pub fn add_schema(&mut self, schema: &Schema) -> Result<TypeId, Error> {
         match &schema.schema_kind {
-            SchemaKind::Type(Type::String(string_type)) => self.add_string_type(string_type),
+            SchemaKind::Type(Type::String(string_type)) => Ok(self.add_string_type(string_type)),
             SchemaKind::Type(Type::Number(_number_type)) => todo!(),
             SchemaKind::Type(Type::Integer(_integer_type)) => todo!(),
             SchemaKind::Type(Type::Object(_object_type)) => todo!(),
