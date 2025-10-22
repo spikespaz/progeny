@@ -182,8 +182,8 @@ impl IntegerKind {
     }
 
     pub fn from_bounds(min_bound: Option<i64>, max_bound: Option<i64>) -> Self {
-        debug_assert!(
-            matches!((min_bound, max_bound), (Some(min), Some(max)) if min <= max),
+        assert!(
+            Option::zip(min_bound, max_bound).is_none_or(|(min, max)| min <= max),
             "min_bound must be <= max_bound"
         );
         let non_negative = min_bound.is_some_and(|min| min >= 0);
