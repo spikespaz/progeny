@@ -14,6 +14,8 @@ pub enum Error {
     Resolve(#[from] crate::resolver::Error),
 }
 
+type Result<T> = std::result::Result<T, Error>;
+
 new_key_type! { pub struct TypeId; }
 
 #[derive(Debug)]
@@ -46,7 +48,7 @@ impl<'doc> TypeGraph<'doc> {
         }
     }
 
-    pub fn add_schema(&mut self, schema: &Schema) -> Result<TypeId, Error> {
+    pub fn add_schema(&mut self, schema: &Schema) -> Result<TypeId> {
         match &schema.schema_kind {
             SchemaKind::Type(Type::String(string_type)) => Ok(self.add_string_type(string_type)),
             SchemaKind::Type(Type::Number(_number_type)) => todo!(),
@@ -133,7 +135,7 @@ impl<'doc> TypeGraph<'doc> {
         self.insert(type_kind)
     }
 
-    pub fn add_array_type(&mut self, array_type: &ArrayType) -> Result<TypeId, Error> {
+    pub fn add_array_type(&mut self, array_type: &ArrayType) -> Result<TypeId> {
         let &ArrayType {
             items: ref item_schema,
             min_items,
