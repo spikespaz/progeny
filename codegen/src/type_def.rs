@@ -1,7 +1,7 @@
 use openapiv3::{Schema, SchemaKind, Type};
 use syn::parse_quote;
 
-use crate::type_model::IntegerKind;
+use crate::type_model::kinds::IntegerKind;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TypeDef {
