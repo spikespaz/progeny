@@ -1,5 +1,5 @@
 use indexmap::IndexSet;
-use openapiv3::{Schema, SchemaKind, StringType, Type};
+use openapiv3::{ArrayType, Schema, SchemaKind, StringType, Type};
 use slotmap::{SecondaryMap, SlotMap, new_key_type};
 
 use crate::ReferenceResolver;
@@ -159,7 +159,7 @@ impl<'doc> TypeGraph<'doc> {
             SchemaKind::Type(Type::Number(_number_type)) => todo!(),
             SchemaKind::Type(Type::Integer(_integer_type)) => todo!(),
             SchemaKind::Type(Type::Object(_object_type)) => todo!(),
-            SchemaKind::Type(Type::Array(_array_type)) => todo!(),
+            SchemaKind::Type(Type::Array(array_type)) => self.add_array_type(array_type),
             SchemaKind::Type(Type::Boolean(_boolean_type)) => todo!(),
             SchemaKind::OneOf { one_of: _ } => todo!(),
             SchemaKind::AllOf { all_of: _ } => todo!(),
@@ -238,6 +238,58 @@ impl<'doc> TypeGraph<'doc> {
         }
 
         self.insert(type_kind)
+    }
+
+    pub fn add_array_type(&mut self, array_type: &ArrayType) -> Result<TypeId, Error> {
+        let &ArrayType {
+            items: ref item_schema,
+            min_items,
+            max_items,
+            unique_items,
+        } = array_type;
+
+        let is_uninhabited = matches!(
+            (min_items, max_items),
+            (Some(min_items), Some(max_items)) if min_items > max_items
+        );
+
+        if is_uninhabited {
+            return Ok(self.uninhabited_id);
+        }
+
+        let item_type_id = if let Some(item_schema) = item_schema {
+            let (component_id, schema) = self.resolver.resolve(item_schema)?;
+            if let Some((type_id, _)) = self.get_by_component(component_id) {
+                type_id
+            } else {
+                let type_id = self.add_schema(&schema)?;
+                self.by_component.insert(component_id, type_id);
+                type_id
+            }
+        } else {
+            // Policy: permissive for future compatibility with OAS 3.1
+            self.anything_id
+        };
+
+        let sequence_kind = match (min_items, max_items) {
+            (None, None) => Sequence::List {
+                items: item_type_id,
+                unique: unique_items,
+            },
+            (Some(min_items), Some(max_items)) if min_items == max_items => Sequence::Exactly {
+                items: item_type_id,
+                count: max_items,
+                unique: unique_items,
+            },
+            _ => Sequence::Bounded {
+                items: item_type_id,
+                min_items,
+                max_items,
+                unique: unique_items,
+            },
+        };
+
+        Ok(self.insert(TypeKind::Sequence(sequence_kind)))
     }
 }
 
