@@ -133,7 +133,7 @@ impl<'doc> ReferenceResolver<'doc> {
     /// For each component, a synthetic reference will be generated with `url`
     /// as the base, and a fragment that points into the OpenAPI *Components Object*.
     ///
-    /// The document URL must already have been added by [`add_document`].
+    /// The document URL must already have been added by [`Self::add_document`].
     ///
     /// Ignores errors; they will resurface in `resolve`.
     pub fn cache_components(&mut self, url: &str, components: &'doc Components) {
