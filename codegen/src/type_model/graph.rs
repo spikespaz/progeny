@@ -198,7 +198,7 @@ impl<'doc> TypeGraph<'doc> {
         let interval_max = maximum.and_then(|(ne, max)| max.checked_sub(ne as i64));
 
         let is_overflow_min = minimum.is_some() && interval_min.is_none();
-        let is_overflow_max = maximum.is_some() && interval_max.is_none();
+        let is_underflow_max = maximum.is_some() && interval_max.is_none();
 
         let is_non_negative = interval_min
             .or(minimum.map(|(_, min)| min))
@@ -215,10 +215,10 @@ impl<'doc> TypeGraph<'doc> {
             || matches!((interval_min, interval_max), (Some(min), Some(max)) if min > max);
 
         // Policy: widen on overflow
-        let integer_kind = if is_overflow_max && is_non_negative {
+        let integer_kind = if is_underflow_max && is_non_negative {
             let Scalar::Integer(integer_kind) = u128::TYPE else { unreachable!() };
             integer_kind
-        } else if is_overflow_min || is_overflow_max {
+        } else if is_overflow_min || is_underflow_max {
             let Scalar::Integer(integer_kind) = i128::TYPE else { unreachable!() };
             integer_kind
         } else {
