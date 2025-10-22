@@ -10,7 +10,8 @@ use crate::type_ref::TypeRef;
 new_key_type! { pub struct TypeId; }
 
 #[derive(Debug)]
-pub struct TypeGraph {
+pub struct TypeGraph<'doc> {
+    resolver: ReferenceResolver<'doc>,
     types: SlotMap<TypeId, TypeKind>,
     by_ref: HashMap<TypeRef, TypeId>,
     scalar_ids: [TypeId; Scalar::COUNT],
@@ -127,8 +128,8 @@ pub enum IntegerKind {
     I128,
 }
 
-impl TypeGraph {
-    pub fn new() -> Self {
+impl<'doc> TypeGraph<'doc> {
+    pub fn new(resolver: ReferenceResolver<'doc>) -> Self {
         let mut types = SlotMap::with_key();
         let scalar_ids = std::array::from_fn(|i| {
             let kind = TypeKind::Scalar(Scalar::TYPES[i]);
@@ -138,6 +139,7 @@ impl TypeGraph {
         let uninhabited_id = types.insert(TypeKind::Uninhabited);
 
         Self {
+            resolver,
             types,
             by_ref: HashMap::new(),
             scalar_ids,
@@ -146,7 +148,7 @@ impl TypeGraph {
         }
     }
 
-    pub fn add_schema(&mut self, schema: &Schema, resolver: &mut ReferenceResolver<'_>) -> TypeId {
+    pub fn add_schema(&mut self, schema: &Schema) -> TypeId {
         match &schema.schema_kind {
             SchemaKind::Type(Type::String(string_type)) => self.add_string_type(string_type),
             SchemaKind::Type(Type::Number(_number_type)) => todo!(),
