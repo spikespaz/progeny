@@ -42,10 +42,16 @@ new_key_type! { pub struct ComponentId; }
 pub struct ReferenceResolver<'doc> {
     #[expect(unused)]
     root: &'doc OpenAPI,
-    /// All documents used for reference resolution, keyed by URL.
-    documents: HashMap<String, Cow<'doc, serde_json::Value>>,
+    /// All documents used for reference resolution for *this* clone, keyed by URL.
+    documents: Rc<HashMap<String, Document<'doc>>>,
     /// Cached components that have been resolved by this instance or clones.
     state: Rc<RefCell<CacheState>>,
+}
+
+#[derive(Clone, Debug)]
+enum Document<'doc> {
+    Borrowed(&'doc serde_json::Value),
+    Shared(Rc<serde_json::Value>),
 }
 
 #[derive(Debug)]
@@ -88,7 +94,7 @@ impl<'doc> ReferenceResolver<'doc> {
     pub fn new(root: &'doc OpenAPI) -> Self {
         let mut new = Self {
             root,
-            documents: HashMap::with_capacity(1),
+            documents: Rc::new(HashMap::with_capacity(1)),
             state: Rc::new(RefCell::new(CacheState {
                 cache: SlotMap::with_key(),
                 meta: SecondaryMap::new(),
@@ -115,7 +121,11 @@ impl<'doc> ReferenceResolver<'doc> {
         url: impl Into<String>,
         document: impl IntoCow<'doc, serde_json::Value>,
     ) {
-        self.documents.insert(url.into(), document.into_cow());
+        let document = match document.into_cow() {
+            Cow::Borrowed(borrow) => Document::Borrowed(borrow),
+            Cow::Owned(owned) => Document::Shared(Rc::new(owned)),
+        };
+        Rc::make_mut(&mut self.documents).insert(url.into(), document);
     }
 
     /// Given a document URL and [`Components`], eagerly resolve and cache.
@@ -219,7 +229,7 @@ impl<'doc> ReferenceResolver<'doc> {
     /// Private, bypasses the cache.
     fn resolve_<O>(
         reference: &str,
-        documents: &HashMap<String, Cow<'doc, serde_json::Value>>,
+        documents: &HashMap<String, impl AsRef<serde_json::Value>>,
     ) -> Result<O, Error>
     where
         O: serde::de::DeserializeOwned,
@@ -239,7 +249,8 @@ impl<'doc> ReferenceResolver<'doc> {
 
         let document = documents
             .get(url)
-            .ok_or_else(|| Error::DocumentNotFound(url.to_string()))?;
+            .ok_or_else(|| Error::DocumentNotFound(url.to_string()))?
+            .as_ref();
 
         let component = document
             .pointer(pointer.deref())
@@ -249,6 +260,15 @@ impl<'doc> ReferenceResolver<'doc> {
             reference: reference.to_owned(),
             source: e,
         })
+    }
+}
+
+impl AsRef<serde_json::Value> for Document<'_> {
+    fn as_ref(&self) -> &serde_json::Value {
+        match self {
+            Document::Borrowed(borrow) => borrow,
+            Document::Shared(shared) => shared,
+        }
     }
 }
 
