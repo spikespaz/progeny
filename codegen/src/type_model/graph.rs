@@ -75,6 +75,18 @@ impl<'doc> TypeGraph<'doc> {
         }
     }
 
+    /// Given a pre-resolved component and a [`Schema`], get the associated `TypeId`
+    /// if it exists, otherwise, add the schema and register an association.
+    fn intern_schema(&mut self, component_id: ComponentId, schema: &Schema) -> Result<TypeId> {
+        if let Some((type_id, _)) = self.get_by_component(component_id) {
+            Ok(type_id)
+        } else {
+            let type_id = self.add_schema(schema)?;
+            self.by_component.insert(component_id, type_id);
+            Ok(type_id)
+        }
+    }
+
     pub fn scalar_id(&self, ty: Scalar) -> TypeId {
         self.scalar_ids[ty.index()]
     }
@@ -154,13 +166,7 @@ impl<'doc> TypeGraph<'doc> {
 
         let item_type_id = if let Some(item_schema) = item_schema {
             let (component_id, schema) = self.resolver.resolve(item_schema)?;
-            if let Some((type_id, _)) = self.get_by_component(component_id) {
-                type_id
-            } else {
-                let type_id = self.add_schema(&schema)?;
-                self.by_component.insert(component_id, type_id);
-                type_id
-            }
+            self.intern_schema(component_id, &schema)?
         } else {
             // Policy: permissive for future compatibility with OAS 3.1
             self.anything_id
