@@ -12,6 +12,8 @@ use crate::resolver::ComponentId;
 pub enum Error {
     #[error("{0}")]
     Resolve(#[from] crate::resolver::Error),
+    #[error("invalid schema: {reason}")]
+    InvalidSchema { reason: &'static str },
 }
 
 type Result<T> = std::result::Result<T, Error>;
