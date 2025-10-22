@@ -142,7 +142,11 @@ impl<'doc> ReferenceResolver<'doc> {
                 for (name, ref_or) in &components.$field {
                     let Ok((id, _)) = self.resolve(ref_or) else { continue };
 
-                    let synth_ref = format!("{url}#/components/{}/{name}", $ref_infix);
+                    let synth_ref = format!(
+                        "{url}#/components/{}/{}",
+                        $ref_infix,
+                        escape_pointer_segment(name)
+                    );
 
                     let mut state = self.state.borrow_mut();
 
@@ -354,3 +358,11 @@ impl_component_variant!(Link <-> openapiv3::Link);
 impl_component_variant!(Callback <-> openapiv3::Callback);
 impl_component_variant!(PathItem <-> openapiv3::PathItem);
 impl_component_variant!(Other <-> serde_json::Value);
+
+fn escape_pointer_segment(segment: &str) -> Cow<'_, str> {
+    if segment.contains('~') || segment.contains('/') {
+        Cow::Owned(segment.replace('~', "~0").replace('/', "~1"))
+    } else {
+        Cow::Borrowed(segment)
+    }
+}
