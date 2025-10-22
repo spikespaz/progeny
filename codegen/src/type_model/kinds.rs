@@ -1,3 +1,5 @@
+use std::num::NonZeroU64;
+
 use indexmap::IndexSet;
 
 use super::TypeId;
@@ -63,7 +65,7 @@ pub enum Refinement {
     Integer {
         kind: IntegerKind,
         format: Option<String>,
-        multiple_of: Option<i64>,
+        multiple_of: Option<NonZeroU64>,
         minimum: Option<(bool, i64)>,
         maximum: Option<(bool, i64)>,
         enumeration: IndexSet<i64>,
