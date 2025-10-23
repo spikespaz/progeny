@@ -200,8 +200,6 @@ impl<'doc> TypeGraph<'doc> {
         let is_overflow_min = matches!(interval_min, Some(min) if min > i64::MAX as i128);
         let is_underflow_max = matches!(interval_max, Some(max) if max < i64::MIN as i128);
 
-        let is_non_negative = interval_min.is_some_and(|min| min >= 0);
-
         // Cast is safe; it came from an `i64` originally.
         let has_valid_enum = enumeration.iter().any(|&v| {
             multiple_of.is_none_or(|m| v % m.get() as i64 == 0)
@@ -215,8 +213,6 @@ impl<'doc> TypeGraph<'doc> {
         // Policy: widen on interval under/overflow
         let integer_kind = if is_empty_domain {
             None
-        } else if is_underflow_max && is_non_negative {
-            Some(IntegerKind::U128)
         } else if is_overflow_min || is_underflow_max {
             Some(IntegerKind::I128)
         } else {
@@ -410,6 +406,15 @@ mod tests {
             ..Default::default()
         }
         ; "underflow i64 exclusive maximum with empty domain is uninhabited"
+    )]
+    #[test_case(
+        &IntegerType {
+            maximum: Some(i64::MIN),
+            exclusive_maximum: true, // exclusive will underflow
+            enumeration: Vec::from_iter([0].map(Some)), // no valid enum
+            ..Default::default()
+        }
+        ; "overflow i64 exclusive maximum with invalid enum is uninhabited"
     )]
     fn uninhabited_integer_type(schema: &IntegerType) {
         let mut graph = empty_type_graph();
