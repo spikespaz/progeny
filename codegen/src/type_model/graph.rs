@@ -352,13 +352,14 @@ impl<'doc> TypeGraph<'doc> {
 mod tests {
     use std::sync::LazyLock;
 
+    use indexmap::IndexSet;
     use openapiv3::{IntegerType, OpenAPI};
     use test_case::test_case;
 
     use super::TypeGraph;
     use crate::ReferenceResolver;
     use crate::type_model::TypeKind;
-    use crate::type_model::kinds::{IntegerKind, Scalar};
+    use crate::type_model::kinds::{IntegerKind, Refinement, Scalar};
 
     static EMPTY_SPEC: LazyLock<OpenAPI> = LazyLock::new(|| OpenAPI {
         openapi: "3.0.4".to_owned(),
@@ -443,6 +444,48 @@ mod tests {
         match graph.get_by_id(type_id) {
             TypeKind::Scalar(Scalar::Integer(kind)) => *kind,
             kind => panic!("expected `TypeKind::Scalar(Scalar::Integer(_))`, found: {kind:?}"),
+        }
+    }
+
+    #[test_case(
+        &IntegerType {
+            enumeration: Vec::from_iter([-1, 1].map(Some)),
+            ..Default::default()
+        }
+        => Refinement::Integer {
+            kind: IntegerKind::I8,
+            format: None,
+            multiple_of: None,
+            minimum: None,
+            maximum: None,
+            enumeration: IndexSet::from_iter([-1, 1]),
+        }
+        ; "unspecified enum format yields smallest fitting scalar"
+    )]
+    #[test_case(
+        &IntegerType {
+            minimum: Some(0), // excludes an enum value
+            enumeration: Vec::from_iter([-1, 1].map(Some)),
+            ..Default::default()
+        }
+        => Refinement::Integer {
+            kind: IntegerKind::I8,
+            format: None,
+            multiple_of: None,
+            minimum: Some((false, 0)),
+            maximum: None,
+            enumeration: IndexSet::from_iter([-1, 1]),
+        }
+        ; "refinement widens scalar for enum out of bounds"
+    )]
+    fn refinement_integer_type(schema: &IntegerType) -> Refinement {
+        let mut graph = empty_type_graph();
+        let type_id = graph.add_integer_type(schema).unwrap();
+        match graph.get_by_id(type_id) {
+            TypeKind::Refinement(inner @ Refinement::Integer { .. }) => inner.clone(),
+            kind => panic!(
+                "expected `TypeKind::Refinement(Refinement::Integer {{ .. }})`, found: {kind:?}"
+            ),
         }
     }
 }
