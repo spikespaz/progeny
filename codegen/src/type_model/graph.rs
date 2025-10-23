@@ -194,29 +194,25 @@ impl<'doc> TypeGraph<'doc> {
             .copied()
             .collect::<IndexSet<_>>();
 
-        // TODO: fix the FIXME below by using a 128-bit interval.
-        let interval_min = minimum.and_then(|(ne, min)| min.checked_add(ne as i64));
-        let interval_max = maximum.and_then(|(ne, max)| max.checked_sub(ne as i64));
+        let interval_min = minimum.map(|(ne, min)| min as i128 + ne as i128);
+        let interval_max = maximum.map(|(ne, max)| max as i128 - ne as i128);
 
-        let is_overflow_min = minimum.is_some() && interval_min.is_none();
-        let is_underflow_max = maximum.is_some() && interval_max.is_none();
+        let is_overflow_min = matches!(interval_min, Some(min) if min > i64::MAX as i128);
+        let is_underflow_max = matches!(interval_max, Some(max) if max < i64::MIN as i128);
 
-        let is_non_negative = interval_min
-            .or(minimum.map(|(_, min)| min))
-            .is_some_and(|min| min >= 0);
+        let is_non_negative = interval_min.is_some_and(|min| min >= 0);
 
         // Cast is safe; it came from an `i64` originally.
         let has_valid_enum = enumeration.iter().any(|&v| {
             multiple_of.is_none_or(|m| v % m.get() as i64 == 0)
-                && (minimum.is_none_or(|(ne, min)| (ne && v > min) || (!ne && v >= min)))
-                && (maximum.is_none_or(|(ne, max)| (ne && v < max) || (!ne && v <= max)))
+                && interval_min.is_none_or(|min| v as i128 >= min)
+                && interval_max.is_none_or(|max| v as i128 <= max)
         });
 
-        // FIXME: if one side overflows, empty domain won't be caught.
         let is_empty_domain = (!enumeration.is_empty() && !has_valid_enum)
             || matches!((interval_min, interval_max), (Some(min), Some(max)) if min > max);
 
-        // Policy: widen on overflow
+        // Policy: widen on interval under/overflow
         let integer_kind = if is_empty_domain {
             None
         } else if is_underflow_max && is_non_negative {
@@ -224,6 +220,9 @@ impl<'doc> TypeGraph<'doc> {
         } else if is_overflow_min || is_underflow_max {
             Some(IntegerKind::I128)
         } else {
+            // checked in the previous branch
+            let interval_min = interval_min.map(|min| min as i64);
+            let interval_max = interval_max.map(|max| max as i64);
             // enum value extrema, causes widen if necessary
             let enum_min = enumeration.iter().min().copied();
             let enum_max = enumeration.iter().max().copied();
@@ -237,10 +236,10 @@ impl<'doc> TypeGraph<'doc> {
         let multiple_of_one = multiple_of.is_none_or(|m| m.get() == 1);
 
         let has_exact_min = Option::zip(integer_kind, interval_min).is_some_and(|(kind, min)| {
-            (kind.is_signed() && min as i128 == kind.min()) || (kind.is_unsigned() && min == 0)
+            (kind.is_signed() && min == kind.min()) || (kind.is_unsigned() && min == 0)
         });
         let has_exact_max = Option::zip(integer_kind, interval_max).is_some_and(|(kind, max)| {
-            (kind.is_signed() && max as i128 == kind.max() as i128)
+            (kind.is_signed() && max == kind.max() as i128)
                 || (kind.is_unsigned() && max >= 0 && max as u128 == kind.max())
         });
 
@@ -250,20 +249,21 @@ impl<'doc> TypeGraph<'doc> {
             && (maximum.is_none() || has_exact_max)
             && enumeration.is_empty();
 
+        debug_assert_eq!(is_empty_domain, integer_kind.is_none());
+
+        let refinement = |kind| Refinement::Integer {
+            kind,
+            format: format.map(ToOwned::to_owned),
+            multiple_of,
+            minimum,
+            maximum,
+            enumeration,
+        };
+
         let mut type_kind = match integer_kind {
             Some(kind) if is_unconstrained => TypeKind::Scalar(Scalar::Integer(kind)),
-            Some(kind) => TypeKind::Refinement(Refinement::Integer {
-                kind,
-                format: format.map(ToOwned::to_owned),
-                multiple_of,
-                minimum,
-                maximum,
-                enumeration,
-            }),
-            None => {
-                debug_assert!(is_empty_domain);
-                TypeKind::Uninhabited
-            }
+            Some(kind) => TypeKind::Refinement(refinement(kind)),
+            None => TypeKind::Uninhabited,
         };
 
         if is_nullable {
