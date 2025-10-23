@@ -194,6 +194,7 @@ impl<'doc> TypeGraph<'doc> {
             .copied()
             .collect::<IndexSet<_>>();
 
+        // TODO: fix the FIXME below by using a 128-bit interval.
         let interval_min = minimum.and_then(|(ne, min)| min.checked_add(ne as i64));
         let interval_max = maximum.and_then(|(ne, max)| max.checked_sub(ne as i64));
 
@@ -211,6 +212,7 @@ impl<'doc> TypeGraph<'doc> {
                 && (maximum.is_none_or(|(ne, max)| (ne && v < max) || (!ne && v <= max)))
         });
 
+        // FIXME: if one side overflows, empty domain won't be caught.
         let is_empty_domain = (!enumeration.is_empty() && !has_valid_enum)
             || matches!((interval_min, interval_max), (Some(min), Some(max)) if min > max);
 
@@ -229,6 +231,7 @@ impl<'doc> TypeGraph<'doc> {
             let union_min = [interval_min, enum_min].iter().flatten().min().copied();
             let union_max = [interval_max, enum_max].iter().flatten().max().copied();
 
+            // FIXME: `from_bounds` is still called even when empty domain
             integer_kind.unwrap_or(IntegerKind::from_bounds(union_min, union_max))
         };
 
@@ -340,5 +343,76 @@ impl<'doc> TypeGraph<'doc> {
         }
 
         self.insert(type_kind)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::LazyLock;
+
+    use openapiv3::{IntegerType, OpenAPI};
+    use test_case::test_case;
+
+    use super::TypeGraph;
+    use crate::ReferenceResolver;
+    use crate::type_model::TypeKind;
+
+    static EMPTY_SPEC: LazyLock<OpenAPI> = LazyLock::new(|| OpenAPI {
+        openapi: "3.0.4".to_owned(),
+        info: openapiv3::Info {
+            title: "".to_owned(),
+            version: "0".to_owned(),
+            ..Default::default()
+        },
+        ..Default::default()
+    });
+
+    fn empty_type_graph() -> TypeGraph<'static> {
+        TypeGraph::new(ReferenceResolver::new(&EMPTY_SPEC))
+    }
+
+    #[test_case(
+        &IntegerType {
+            minimum: Some(i64::MAX),
+            maximum: Some(i64::MIN),
+            ..Default::default()
+        }
+        ; "invalid i64 interval extrema with empty domain is uninhabited"
+    )]
+    #[test_case(
+        &IntegerType {
+            minimum: Some(i64::MAX),
+            maximum: Some(i64::MIN),
+            exclusive_minimum: true, // exclusive will overflow
+            exclusive_maximum: true, // exclusive will underflow
+            ..Default::default()
+        }
+        ; "overflowed invalid i64 interval extrema with empty domain is uninhabited"
+    )]
+    #[test_case(
+        &IntegerType {
+            minimum: Some(i64::MAX),
+            maximum: Some(i64::MAX),
+            exclusive_minimum: true, // exclusive will overflow
+            ..Default::default()
+        }
+        ; "overflow i64 exclusive minimum with empty domain is uninhabited"
+    )]
+    #[test_case(
+        &IntegerType {
+            minimum: Some(i64::MIN),
+            maximum: Some(i64::MIN),
+            exclusive_maximum: true, // exclusive will underflow
+            ..Default::default()
+        }
+        ; "underflow i64 exclusive maximum with empty domain is uninhabited"
+    )]
+    fn uninhabited_integer_type(schema: &IntegerType) {
+        let mut graph = empty_type_graph();
+        let type_id = graph.add_integer_type(schema).unwrap();
+        match graph.get_by_id(type_id) {
+            TypeKind::Uninhabited => assert_eq!(type_id, graph.uninhabited_id()),
+            kind => panic!("expected `TypeKind::Uninhabited`, found: {kind:?}"),
+        }
     }
 }
