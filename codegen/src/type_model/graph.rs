@@ -241,7 +241,10 @@ impl<'doc> TypeGraph<'doc> {
             (integer_kind.is_signed() && min as i128 == integer_kind.min())
                 || (integer_kind.is_unsigned() && min == 0)
         });
-        let has_exact_max = interval_max.is_some_and(|max| max as u128 == integer_kind.max());
+        let has_exact_max = interval_max.is_some_and(|max| {
+            (integer_kind.is_signed() && max as i128 == integer_kind.max() as i128)
+                || (integer_kind.is_unsigned() && max >= 0 && max as u128 == integer_kind.max())
+        });
 
         let is_unconstrained = format.is_none()
             && multiple_of_one
