@@ -449,6 +449,38 @@ mod tests {
 
     #[test_case(
         &IntegerType {
+            minimum: Some(i64::MAX),
+            exclusive_minimum: true,
+            ..Default::default()
+        }
+        => Refinement::Integer {
+            kind: IntegerKind::I128,
+            format: None,
+            multiple_of: None,
+            minimum: Some((true, i64::MAX)),
+            maximum: None,
+            enumeration: IndexSet::new(),
+        }
+        ; "overflow i64 exclusive minimum widens to i128"
+    )]
+    #[test_case(
+        &IntegerType {
+            maximum: Some(i64::MIN),
+            exclusive_maximum: true,
+            ..Default::default()
+        }
+        => Refinement::Integer {
+            kind: IntegerKind::I128,
+            format: None,
+            multiple_of: None,
+            minimum: None,
+            maximum: Some((true, i64::MIN)),
+            enumeration: IndexSet::new(),
+        }
+        ; "underflow i64 exclusive maximum widens to i128"
+    )]
+    #[test_case(
+        &IntegerType {
             enumeration: Vec::from_iter([-1, 1].map(Some)),
             ..Default::default()
         }
