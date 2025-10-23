@@ -57,15 +57,13 @@ impl<'doc> TypeGraph<'doc> {
     }
 
     pub fn add_schema(&mut self, schema: &Schema) -> Result<TypeId> {
-        match &schema.schema_kind {
-            SchemaKind::Type(Type::String(string_type)) => Ok(self.add_string_type(string_type)),
+        let mut type_id = match &schema.schema_kind {
+            SchemaKind::Type(Type::String(string_type)) => self.add_string_type(string_type),
             SchemaKind::Type(Type::Number(_number_type)) => todo!(),
-            SchemaKind::Type(Type::Integer(integer_type)) => self.add_integer_type(integer_type),
+            SchemaKind::Type(Type::Integer(integer_type)) => self.add_integer_type(integer_type)?,
             SchemaKind::Type(Type::Object(_object_type)) => todo!(),
-            SchemaKind::Type(Type::Array(array_type)) => self.add_array_type(array_type),
-            SchemaKind::Type(Type::Boolean(boolean_type)) => {
-                Ok(self.add_boolean_type(boolean_type))
-            }
+            SchemaKind::Type(Type::Array(array_type)) => self.add_array_type(array_type)?,
+            SchemaKind::Type(Type::Boolean(boolean_type)) => self.add_boolean_type(boolean_type),
             SchemaKind::OneOf { one_of: _ } => todo!(),
             SchemaKind::AllOf { all_of: _ } => todo!(),
             SchemaKind::AnyOf { any_of: _ } => todo!(),
@@ -73,7 +71,13 @@ impl<'doc> TypeGraph<'doc> {
             SchemaKind::Any(any_schema) => {
                 unimplemented!("{}", std::any::type_name_of_val(any_schema))
             }
+        };
+
+        if schema.schema_data.nullable {
+            type_id = self.insert(TypeKind::Nullable(type_id))
         }
+
+        Ok(type_id)
     }
 
     fn insert(&mut self, type_kind: TypeKind) -> TypeId {
