@@ -358,6 +358,7 @@ mod tests {
     use super::TypeGraph;
     use crate::ReferenceResolver;
     use crate::type_model::TypeKind;
+    use crate::type_model::kinds::{IntegerKind, Scalar};
 
     static EMPTY_SPEC: LazyLock<OpenAPI> = LazyLock::new(|| OpenAPI {
         openapi: "3.0.4".to_owned(),
@@ -415,6 +416,33 @@ mod tests {
         match graph.get_by_id(type_id) {
             TypeKind::Uninhabited => assert_eq!(type_id, graph.uninhabited_id()),
             kind => panic!("expected `TypeKind::Uninhabited`, found: {kind:?}"),
+        }
+    }
+
+    #[test_case(
+        &IntegerType {
+            minimum: Some(0),
+            maximum: Some(u32::MAX as i64),
+            ..Default::default()
+        }
+        => matches IntegerKind::U32
+        ; "u32 extrema yields u32 scalar"
+    )]
+    #[test_case(
+        &IntegerType {
+            minimum: Some(i64::MIN),
+            maximum: Some(i64::MAX),
+            ..Default::default()
+        }
+        => matches IntegerKind::I64
+        ; "i64 extrema yields i64 scalar"
+    )]
+    fn scalar_integer_type(schema: &IntegerType) -> IntegerKind {
+        let mut graph = empty_type_graph();
+        let type_id = graph.add_integer_type(schema).unwrap();
+        match graph.get_by_id(type_id) {
+            TypeKind::Scalar(Scalar::Integer(kind)) => *kind,
+            kind => panic!("expected `TypeKind::Scalar(Scalar::Integer(_))`, found: {kind:?}"),
         }
     }
 }
