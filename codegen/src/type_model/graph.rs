@@ -217,10 +217,12 @@ impl<'doc> TypeGraph<'doc> {
             || matches!((interval_min, interval_max), (Some(min), Some(max)) if min > max);
 
         // Policy: widen on overflow
-        let integer_kind = if is_underflow_max && is_non_negative {
-            IntegerKind::U128
+        let integer_kind = if is_empty_domain {
+            None
+        } else if is_underflow_max && is_non_negative {
+            Some(IntegerKind::U128)
         } else if is_overflow_min || is_underflow_max {
-            IntegerKind::I128
+            Some(IntegerKind::I128)
         } else {
             // enum value extrema, causes widen if necessary
             let enum_min = enumeration.iter().min().copied();
@@ -229,19 +231,17 @@ impl<'doc> TypeGraph<'doc> {
             let union_min = [interval_min, enum_min].iter().flatten().min().copied();
             let union_max = [interval_max, enum_max].iter().flatten().max().copied();
 
-            // FIXME: `from_bounds` is still called even when empty domain
-            integer_kind.unwrap_or(IntegerKind::from_bounds(union_min, union_max))
+            Some(integer_kind.unwrap_or_else(|| IntegerKind::from_bounds(union_min, union_max)))
         };
 
         let multiple_of_one = multiple_of.is_none_or(|m| m.get() == 1);
 
-        let has_exact_min = interval_min.is_some_and(|min| {
-            (integer_kind.is_signed() && min as i128 == integer_kind.min())
-                || (integer_kind.is_unsigned() && min == 0)
+        let has_exact_min = Option::zip(integer_kind, interval_min).is_some_and(|(kind, min)| {
+            (kind.is_signed() && min as i128 == kind.min()) || (kind.is_unsigned() && min == 0)
         });
-        let has_exact_max = interval_max.is_some_and(|max| {
-            (integer_kind.is_signed() && max as i128 == integer_kind.max() as i128)
-                || (integer_kind.is_unsigned() && max >= 0 && max as u128 == integer_kind.max())
+        let has_exact_max = Option::zip(integer_kind, interval_max).is_some_and(|(kind, max)| {
+            (kind.is_signed() && max as i128 == kind.max() as i128)
+                || (kind.is_unsigned() && max >= 0 && max as u128 == kind.max())
         });
 
         let is_unconstrained = format.is_none()
@@ -250,19 +250,20 @@ impl<'doc> TypeGraph<'doc> {
             && (maximum.is_none() || has_exact_max)
             && enumeration.is_empty();
 
-        let mut type_kind = if is_empty_domain {
-            TypeKind::Uninhabited
-        } else if is_unconstrained {
-            TypeKind::Scalar(Scalar::Integer(integer_kind))
-        } else {
-            TypeKind::Refinement(Refinement::Integer {
-                kind: integer_kind,
+        let mut type_kind = match integer_kind {
+            Some(kind) if is_unconstrained => TypeKind::Scalar(Scalar::Integer(kind)),
+            Some(kind) => TypeKind::Refinement(Refinement::Integer {
+                kind,
                 format: format.map(ToOwned::to_owned),
                 multiple_of,
                 minimum,
                 maximum,
                 enumeration,
-            })
+            }),
+            None => {
+                debug_assert!(is_empty_domain);
+                TypeKind::Uninhabited
+            }
         };
 
         if is_nullable {
