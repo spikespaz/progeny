@@ -218,11 +218,9 @@ impl<'doc> TypeGraph<'doc> {
 
         // Policy: widen on overflow
         let integer_kind = if is_underflow_max && is_non_negative {
-            let Scalar::Integer(integer_kind) = u128::TYPE else { unreachable!() };
-            integer_kind
+            IntegerKind::U128
         } else if is_overflow_min || is_underflow_max {
-            let Scalar::Integer(integer_kind) = i128::TYPE else { unreachable!() };
-            integer_kind
+            IntegerKind::I128
         } else {
             // enum value extrema, causes widen if necessary
             let enum_min = enumeration.iter().min().copied();
