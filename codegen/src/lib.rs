@@ -1,4 +1,3 @@
-mod box_or_ref;
 mod generator;
 mod into_cow;
 mod resolver;
