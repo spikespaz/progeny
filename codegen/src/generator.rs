@@ -3,7 +3,8 @@ use openapiv3::{OpenAPI, Parameter};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
-use crate::{IntoCow, ReferenceResolver};
+use crate::IntoCow;
+use crate::resolver::ReferenceResolver;
 
 #[derive(Debug, Default)]
 pub struct Settings {

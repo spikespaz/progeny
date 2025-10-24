@@ -9,8 +9,7 @@ use slotmap::{SecondaryMap, SlotMap, new_key_type};
 
 use super::kinds::{Record, Refinement, Scalar, Sequence, StringFormat};
 use super::{ScalarType as _, TypeKind};
-use crate::ReferenceResolver;
-use crate::resolver::ComponentId;
+use crate::resolver::{ComponentId, ReferenceResolver};
 use crate::type_model::kinds::IntegerKind;
 
 #[derive(Debug, thiserror::Error)]
@@ -422,7 +421,7 @@ mod tests {
     use test_case::test_case;
 
     use super::TypeGraph;
-    use crate::ReferenceResolver;
+    use crate::resolver::ReferenceResolver;
     use crate::type_model::TypeKind;
     use crate::type_model::kinds::{IntegerKind, Refinement, Scalar};
 
