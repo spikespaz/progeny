@@ -123,6 +123,14 @@ pub fn format_ident_safe(name: impl AsRef<str>, case: ConvertCase) -> syn::Ident
     }
 }
 
+pub fn to_type_ident(name: impl AsRef<str>) -> syn::Ident {
+    format_ident_safe(name, ConvertCase::Pascal)
+}
+
+pub fn to_snake_ident(name: impl AsRef<str>) -> syn::Ident {
+    format_ident_safe(name, ConvertCase::Snake)
+}
+
 #[cfg(test)]
 mod tests {
     use test_case::test_case;

@@ -5,7 +5,7 @@ use proc_macro2::TokenStream;
 use quote::quote;
 
 use crate::IntoCow;
-use crate::formatting::{ConvertCase, format_ident_safe};
+use crate::formatting::to_snake_ident;
 use crate::resolver::ReferenceResolver;
 
 #[derive(Debug, Default)]
@@ -44,16 +44,13 @@ impl<'a> Generator<'a> {
         for (template, path) in &self.spec.paths.paths {
             let (_, path) = self.resolver.resolve(path)?;
             for (method, op) in path.iter() {
-                let fn_name = format_ident_safe(
-                    match &op.operation_id {
-                        Some(op_id) if self.settings.prefix_operations => {
-                            Cow::Owned(format!("{method}_{op_id}"))
-                        }
-                        Some(op_id) => Cow::Borrowed(op_id.as_ref()),
-                        None => Cow::Owned(format!("{method}_{template}")),
-                    },
-                    ConvertCase::Snake,
-                );
+                let fn_name = to_snake_ident(match &op.operation_id {
+                    Some(op_id) if self.settings.prefix_operations => {
+                        Cow::Owned(format!("{method}_{op_id}"))
+                    }
+                    Some(op_id) => Cow::Borrowed(op_id.as_ref()),
+                    None => Cow::Owned(format!("{method}_{template}")),
+                });
 
                 let mut path_args = Vec::new();
                 let mut query_args = Vec::new();
@@ -64,8 +61,7 @@ impl<'a> Generator<'a> {
                             parameter_data,
                             style,
                         } => {
-                            let arg_name =
-                                format_ident_safe(&parameter_data.name, ConvertCase::Snake);
+                            let arg_name = to_snake_ident(&parameter_data.name);
                             path_args.push(quote!(#arg_name: ()));
                         }
                         Parameter::Query {
@@ -75,8 +71,7 @@ impl<'a> Generator<'a> {
                             allow_empty_value,
                         } => {
                             if parameter_data.required {
-                                let arg_name =
-                                    format_ident_safe(&parameter_data.name, ConvertCase::Snake);
+                                let arg_name = to_snake_ident(&parameter_data.name);
                                 query_args.push(quote!(#arg_name: ()));
                             } else {
                                 eprintln!("optional query parameters to be in a type")
