@@ -15,6 +15,7 @@ progeny-codegen = { path = "./codegen" }
 
 [workspace.lints.rust]
 unused_crate_dependencies = "forbid"
+unused_qualifications = "warn"
 
 [package]
 name = "progeny"
