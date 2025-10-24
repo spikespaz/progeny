@@ -2,8 +2,8 @@ use std::num::NonZeroU64;
 
 use indexmap::{IndexMap, IndexSet};
 use openapiv3::{
-    AdditionalProperties, ArrayType, BooleanType, IntegerType, ObjectType, Schema, SchemaKind,
-    StringType, Type,
+    AdditionalProperties, AnySchema, ArrayType, BooleanType, IntegerType, ObjectType, Schema,
+    SchemaKind, StringType, Type,
 };
 use slotmap::{SecondaryMap, SlotMap, new_key_type};
 
@@ -71,6 +71,7 @@ impl<'doc> TypeGraph<'doc> {
             SchemaKind::AllOf { all_of: _ } => todo!(),
             SchemaKind::AnyOf { any_of: _ } => todo!(),
             SchemaKind::Not { not: _ } => todo!(),
+            SchemaKind::Any(any_schema) if any_schema == &AnySchema::default() => self.anything_id,
             SchemaKind::Any(any_schema) => {
                 unimplemented!("{}", std::any::type_name_of_val(any_schema))
             }
