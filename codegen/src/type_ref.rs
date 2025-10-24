@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum InferNameError {
     #[error("invalid JSON pointer in reference '{reference}': {reason}")]
@@ -21,60 +23,57 @@ pub struct TypeRef {
     pub reference: Option<String>,
 }
 
-impl TypeRef {
-    pub fn from_reference(reference: impl Into<String>) -> Result<Self, InferNameError> {
-        let reference = reference.into();
+pub fn name_from_reference(reference: &str) -> Result<Cow<'_, str>, InferNameError> {
+    let (url, fragment) = reference.split_once('#').unwrap_or((reference, ""));
 
-        let (url, fragment) = reference
-            .split_once('#')
-            .unwrap_or((reference.as_str(), ""));
-
-        let inferred_name = if fragment.is_empty() {
-            if url.is_empty() {
-                return Err(InferNameError::MissingName { reference });
-            }
-            // Parsing a URL as a path works for 99% of expected usage.
-            // See the ignored tests for _some_ known failing edge-cases.
-            let Some(first_label) = std::path::Path::new(url)
-                .file_name()
-                .map(|s| s.to_str().unwrap())
-                .and_then(|fname| fname.split('.').find(|s| !s.is_empty()))
-            else {
-                return Err(InferNameError::MissingName { reference });
-            };
-
-            std::borrow::Cow::Borrowed(first_label)
-        } else {
-            use percent_encoding::percent_decode_str;
-            let pointer = match percent_decode_str(fragment).decode_utf8() {
-                Ok(pointer) => pointer,
-                Err(e) => {
-                    return Err(InferNameError::DecodePointer {
-                        reference,
-                        source: e,
-                    });
-                }
-            };
-            if !pointer.starts_with('/') {
-                return Err(InferNameError::InvalidPointer {
-                    reference,
-                    reason: "missing leading slash",
-                });
-            }
-            if pointer.ends_with('/') {
-                return Err(InferNameError::MissingName { reference });
-            }
-            let last_segment = pointer[1..].rsplit('/').next().unwrap();
-            let last_segment = last_segment.replace("~1", "/").replace("~0", "~");
-
-            std::borrow::Cow::Owned(last_segment)
+    let inferred_name = if fragment.is_empty() {
+        if url.is_empty() {
+            return Err(InferNameError::MissingName {
+                reference: reference.to_owned(),
+            });
+        }
+        // Parsing a URL as a path works for 99% of expected usage.
+        // See the ignored tests for _some_ known failing edge-cases.
+        let Some(first_label) = std::path::Path::new(url)
+            .file_name()
+            .map(|s| s.to_str().unwrap())
+            .and_then(|fname| fname.split('.').find(|s| !s.is_empty()))
+        else {
+            return Err(InferNameError::MissingName {
+                reference: reference.to_owned(),
+            });
         };
 
-        Ok(Self {
-            ident: format_ident_safe(inferred_name, convert_case::Case::Pascal),
-            reference: Some(reference),
-        })
-    }
+        Cow::Borrowed(first_label)
+    } else {
+        use percent_encoding::percent_decode_str;
+        let pointer = match percent_decode_str(fragment).decode_utf8() {
+            Ok(pointer) => pointer,
+            Err(e) => {
+                return Err(InferNameError::DecodePointer {
+                    reference: reference.to_owned(),
+                    source: e,
+                });
+            }
+        };
+        if !pointer.starts_with('/') {
+            return Err(InferNameError::InvalidPointer {
+                reference: reference.to_owned(),
+                reason: "missing leading slash",
+            });
+        }
+        if pointer.ends_with('/') {
+            return Err(InferNameError::MissingName {
+                reference: reference.to_owned(),
+            });
+        }
+        let last_segment = pointer[1..].rsplit('/').next().unwrap();
+        let last_segment = last_segment.replace("~1", "/").replace("~0", "~");
+
+        Cow::Owned(last_segment)
+    };
+
+    Ok(inferred_name)
 }
 
 pub fn format_ident_safe(name: impl AsRef<str>, case: convert_case::Case) -> syn::Ident {
@@ -132,7 +131,7 @@ pub fn format_ident_safe(name: impl AsRef<str>, case: convert_case::Case) -> syn
 mod tests {
     use test_case::test_case;
 
-    use super::{InferNameError, TypeRef, format_ident_safe};
+    use super::{InferNameError, format_ident_safe, name_from_reference};
 
     #[test_case("foo" => "Foo" ; "simple lower")]
     #[test_case("foo_bar" => "FooBar" ; "snake case")]
@@ -153,40 +152,37 @@ mod tests {
     //
     // identifier from reference URL
     //
-    #[test_case("external-schema.json" => "ExternalSchema" ; "simple file")]
-    #[test_case("dir/file.name.ext" => "File" ; "first non empty label before dot")]
-    #[test_case(".hidden.yaml" => "Hidden" ; "hidden file")]
-    #[test_case("some/dir/" => "Dir" ; "trailing slash uses last segment")]
-    #[test_case("dir/." => "Dir" ; "dir dot pseudo file")]
-    #[test_case("https://example.com/api/image-metadata.schema.json" => "ImageMetadata" ; "name from https url")]
-    #[test_case("file:///etc/schemas/user.json" => "User" ; "name from file url")]
-    #[test_case("https://example.com/api/foo/bar/." => "Bar" ; "https url trailing dot")]
-    #[test_case("https://example.com/api/foo/bar/../baz.json" => "Baz" ; "https url with two dots in middle")]
-    #[test_case("https://example.com/api/foo/./bar.json" => "Bar" ; "https url with one dot in middle")]
-    #[test_case("https://example.com/dir;v=1/file.schema.json" => "File" ; "matrix param in path segment")]
+    #[test_case("external-schema.json" => "external-schema" ; "simple file")]
+    #[test_case("dir/file.name.ext" => "file" ; "first non empty label before dot")]
+    #[test_case(".hidden.yaml" => "hidden" ; "hidden file")]
+    #[test_case("some/dir/" => "dir" ; "trailing slash uses last segment")]
+    #[test_case("dir/." => "dir" ; "dir dot pseudo file")]
+    #[test_case("https://example.com/api/image-metadata.schema.json" => "image-metadata" ; "name from https url")]
+    #[test_case("file:///etc/schemas/user.json" => "user" ; "name from file url")]
+    #[test_case("https://example.com/api/foo/bar/." => "bar" ; "https url trailing dot")]
+    #[test_case("https://example.com/api/foo/bar/../baz.json" => "baz" ; "https url with two dots in middle")]
+    #[test_case("https://example.com/api/foo/./bar.json" => "bar" ; "https url with one dot in middle")]
+    #[test_case("https://example.com/dir;v=1/file.schema.json" => "file" ; "matrix param in path segment")]
     //
     // known broken (url branch), requires full URL parsing to fix
     //
-    #[test_case("https://example.com/api/foo/bar/.." => ignore "Foo" ; "https url trailing two dots")]
+    #[test_case("https://example.com/api/foo/bar/.." => ignore "foo" ; "https url trailing two dots")]
     //
     // identifier from reference fragment
     //
     #[test_case("#/components/schemas/Foo" => "Foo" ; "basic fragment")]
-    #[test_case("#/components/schemas/Foo~1Bar" => "FooBar" ; "json pointer escape slash")]
-    #[test_case("#/components/schemas/~0tilde" => "Tilde" ; "json pointer escape tilde")]
-    #[test_case("#/components/schemas/caf%C3%A9" => "Café" ; "percent decoded utf8 letter")]
+    #[test_case("#/components/schemas/Foo~1Bar" => "Foo/Bar" ; "json pointer escape slash")]
+    #[test_case("#/components/schemas/~0tilde" => "~tilde" ; "json pointer escape tilde")]
+    #[test_case("#/components/schemas/caf%C3%A9" => "café" ; "percent decoded utf8 letter")]
     #[test_case("#%2Fcomponents%2Fschemas%2FFoo" => "Foo" ; "percent decoded slash")]
-    #[test_case("#/components/schemas/Name+With+Plus" => "NameWithPlus" ; "literal plus chars")]
+    #[test_case("#/components/schemas/Name+With+Plus" => "Name+With+Plus" ; "literal plus chars")]
     //
     // precedence
     //
     #[test_case("schema.json#/components/schemas/Foo" => "Foo" ; "fragment takes precedence over url")]
-    #[test_case("schema.json#" => "Schema" ; "empty fragment falls back to url")]
+    #[test_case("schema.json#" => "schema" ; "empty fragment falls back to url")]
     fn infer_name_from_reference(reference: &str) -> String {
-        TypeRef::from_reference(reference)
-            .unwrap()
-            .ident
-            .to_string()
+        name_from_reference(reference).unwrap().to_string()
     }
 
     //
@@ -220,6 +216,6 @@ mod tests {
     //
     #[test_case("#" => matches InferNameError::MissingName { .. } ; "empty fragment with empty url")]
     fn fail_infer_name_from_reference(reference: &str) -> InferNameError {
-        TypeRef::from_reference(reference).unwrap_err()
+        name_from_reference(reference).unwrap_err()
     }
 }
