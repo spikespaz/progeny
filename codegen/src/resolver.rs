@@ -86,8 +86,6 @@ enum Component {
 struct ComponentMeta {
     /// All references that point to this component.
     references: Vec<String>,
-    /// Mapping of reference to name, for all names seen for this component.
-    names: Vec<(String, String)>,
 }
 
 impl<'doc> ReferenceResolver<'doc> {
@@ -151,7 +149,6 @@ impl<'doc> ReferenceResolver<'doc> {
                     let mut state = self.state.borrow_mut();
 
                     let meta = state.get_meta_mut(id);
-                    meta.names.push((synth_ref.clone(), name.clone()));
                     meta.references.push(synth_ref.clone());
 
                     state.references.insert(synth_ref, id);
