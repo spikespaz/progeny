@@ -1,9 +1,9 @@
+pub mod formatting;
 pub mod generator;
 pub mod resolver;
 pub mod type_model;
 
 mod into_cow;
-mod type_ref;
 
 pub use self::generator::{Generator, Settings};
 pub(crate) use crate::__sealed::Sealed;

@@ -17,12 +17,6 @@ pub enum InferNameError {
     MissingName { reference: String },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct TypeRef {
-    pub ident: syn::Ident,
-    pub reference: Option<String>,
-}
-
 pub fn name_from_reference(reference: &str) -> Result<Cow<'_, str>, InferNameError> {
     let (url, fragment) = reference.split_once('#').unwrap_or((reference, ""));
 
