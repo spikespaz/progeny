@@ -1,5 +1,7 @@
 use std::borrow::Cow;
 
+pub use convert_case::Case as ConvertCase;
+
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum InferNameError {
     #[error("invalid JSON pointer in reference '{reference}': {reason}")]
@@ -70,7 +72,7 @@ pub fn name_from_reference(reference: &str) -> Result<Cow<'_, str>, InferNameErr
     Ok(inferred_name)
 }
 
-pub fn format_ident_safe(name: impl AsRef<str>, case: convert_case::Case) -> syn::Ident {
+pub fn format_ident_safe(name: impl AsRef<str>, case: ConvertCase) -> syn::Ident {
     use check_keyword::CheckKeyword;
     use convert_case::{Boundary, Casing as _};
 
