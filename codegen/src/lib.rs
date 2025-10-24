@@ -1,7 +1,8 @@
-mod generator;
+pub mod generator;
+pub mod resolver;
+pub mod type_model;
+
 mod into_cow;
-mod resolver;
-mod type_model;
 mod type_ref;
 
 pub use self::generator::{Generator, Settings, generate_openapi};
