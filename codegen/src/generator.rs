@@ -104,8 +104,3 @@ impl<'a> Generator<'a> {
         Ok(tokens)
     }
 }
-
-pub fn generate_openapi(spec: &OpenAPI, settings: &Settings) -> anyhow::Result<TokenStream> {
-    let mut generator = Generator::new(spec, settings);
-    generator.run()
-}

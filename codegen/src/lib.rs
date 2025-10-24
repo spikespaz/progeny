@@ -5,7 +5,7 @@ pub mod type_model;
 mod into_cow;
 mod type_ref;
 
-pub use self::generator::{Generator, Settings, generate_openapi};
+pub use self::generator::{Generator, Settings};
 pub(crate) use crate::__sealed::Sealed;
 pub(crate) use crate::into_cow::IntoCow;
 
