@@ -7,10 +7,11 @@ use openapiv3::{
 };
 use slotmap::{SecondaryMap, SlotMap, new_key_type};
 
-use super::kinds::{Record, Refinement, Scalar, Sequence, StringFormat};
-use super::{ScalarType as _, TypeKind};
+use super::TypeKind;
+use super::kinds::{
+    IntegerKind, Record, Refinement, Scalar, ScalarType as _, Sequence, StringFormat,
+};
 use crate::resolver::{ComponentId, ReferenceResolver};
-use crate::type_model::kinds::IntegerKind;
 
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -422,8 +423,7 @@ mod tests {
 
     use super::TypeGraph;
     use crate::resolver::ReferenceResolver;
-    use crate::type_model::TypeKind;
-    use crate::type_model::kinds::{IntegerKind, Refinement, Scalar};
+    use crate::type_model::kinds::{IntegerKind, Refinement, Scalar, TypeKind};
 
     static EMPTY_SPEC: LazyLock<OpenAPI> = LazyLock::new(|| OpenAPI {
         openapi: "3.0.4".to_owned(),
