@@ -71,15 +71,15 @@ impl TypeRef {
         };
 
         Ok(Self {
-            ident: format_ident_safe(inferred_name),
+            ident: format_ident_safe(inferred_name, convert_case::Case::Pascal),
             reference: Some(reference),
         })
     }
 }
 
-pub fn format_ident_safe(name: impl AsRef<str>) -> syn::Ident {
+pub fn format_ident_safe(name: impl AsRef<str>, case: convert_case::Case) -> syn::Ident {
     use check_keyword::CheckKeyword;
-    use convert_case::{Boundary, Case, Casing as _};
+    use convert_case::{Boundary, Casing as _};
 
     const NON_ALPHANUMERIC: Boundary = Boundary {
         name: "NonAlphanumeric",
@@ -104,7 +104,7 @@ pub fn format_ident_safe(name: impl AsRef<str>) -> syn::Ident {
         start: 1, // boundary after the first uppercase char
         len: 0,   // consume nothing
     };
-    const TYPE_IDENT_BOUNDARIES: &[Boundary] = &[
+    const IDENT_WORD_BOUNDARIES: &[Boundary] = &[
         NON_ALPHANUMERIC,
         Boundary::LOWER_DIGIT,
         Boundary::UPPER_DIGIT,
@@ -116,8 +116,8 @@ pub fn format_ident_safe(name: impl AsRef<str>) -> syn::Ident {
 
     let name = name
         .as_ref()
-        .with_boundaries(TYPE_IDENT_BOUNDARIES)
-        .to_case(Case::Pascal);
+        .with_boundaries(IDENT_WORD_BOUNDARIES)
+        .to_case(case);
 
     if name.starts_with(|c: char| !c.is_alphabetic()) {
         quote::format_ident!("_{name}")
@@ -147,7 +147,7 @@ mod tests {
     #[test_case("Self" => "Self_" ; "pascal keyword underscore")]
     #[test_case("_leading_underscore" => "LeadingUnderscore" ; "drop leading underscore")]
     fn format_ident(input: &str) -> String {
-        format_ident_safe(input).to_string()
+        format_ident_safe(input, convert_case::Case::Pascal).to_string()
     }
 
     //
