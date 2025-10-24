@@ -174,7 +174,6 @@ impl<'doc> ReferenceResolver<'doc> {
         cache!(callbacks, "callbacks");
     }
 
-    #[allow(private_bounds)]
     pub fn resolve<O>(
         &mut self,
         ref_or: &ReferenceOr<impl std::borrow::Borrow<O>>,
@@ -195,7 +194,6 @@ impl<'doc> ReferenceResolver<'doc> {
         }
     }
 
-    #[allow(private_bounds)]
     pub fn resolve_reference<O>(&mut self, reference: &str) -> Result<(ComponentId, Rc<O>), Error>
     where
         O: ComponentObject,
@@ -317,9 +315,16 @@ impl Component {
     }
 }
 
-trait ComponentObject: Clone + serde::de::DeserializeOwned {
+pub trait ComponentObject
+where
+    Self: Clone + serde::de::DeserializeOwned + crate::Sealed,
+{
+    #[doc(hidden)]
+    #[expect(private_interfaces)]
     fn into_component(self) -> Component;
 
+    #[doc(hidden)]
+    #[expect(private_interfaces)]
     fn from_component(other: &Component) -> Option<Rc<Self>>;
 }
 
@@ -331,11 +336,15 @@ impl<O: ComponentObject> From<O> for Component {
 
 macro_rules! impl_component_variant {
     ($Variant:ident <-> $Type:ty) => {
+        impl crate::Sealed for $Type {}
+
         impl ComponentObject for $Type {
+            #[expect(private_interfaces)]
             fn into_component(self) -> Component {
                 Component::$Variant(Rc::new(self))
             }
 
+            #[expect(private_interfaces)]
             fn from_component(other: &Component) -> Option<Rc<Self>> {
                 if let Component::$Variant(rc) = other {
                     Some(rc.clone())
