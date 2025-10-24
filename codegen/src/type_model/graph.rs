@@ -88,6 +88,7 @@ impl<'doc> TypeGraph<'doc> {
         match type_kind {
             TypeKind::Anything => self.anything_id,
             TypeKind::Scalar(ty) => self.scalar_id(ty),
+            TypeKind::Nullable(ty) if ty == self.anything_id => self.anything_id,
             TypeKind::Nullable(ty) if ty == self.uninhabited_id => self.null_id,
             TypeKind::Uninhabited => self.uninhabited_id,
             type_kind => self.types.insert(type_kind),
