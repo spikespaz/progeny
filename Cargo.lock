@@ -99,6 +99,7 @@ dependencies = [
 name = "progeny"
 version = "0.1.0"
 dependencies = [
+ "progeny-codegen",
  "progeny-macros",
 ]
 

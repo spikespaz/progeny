@@ -26,7 +26,7 @@ license.workspace = true
 edition.workspace = true
 
 [dependencies]
-# progeny-codegen.workspace = true
+progeny-codegen.workspace = true
 progeny-macros = { path = "./macros" }
 
 [lints]
