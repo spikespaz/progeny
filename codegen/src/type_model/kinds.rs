@@ -1,6 +1,6 @@
 use std::num::NonZeroU64;
 
-use indexmap::IndexSet;
+use indexmap::{IndexMap, IndexSet};
 
 use super::TypeId;
 
@@ -8,6 +8,7 @@ use super::TypeId;
 pub enum TypeKind {
     Anything,
     Scalar(Scalar),
+    Record(Record),
     Sequence(Sequence),
     Refinement(Refinement),
     Nullable(TypeId),
@@ -24,6 +25,23 @@ pub enum Scalar {
     Float(FloatKind),
     Integer(IntegerKind),
     Boolean,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Record {
+    /// Mapping of field names to types.
+    ///
+    /// The first value in the tuple determines whether a field is required or
+    /// optional, with `#[serde(default, skip_serializing_if = "Option::is_none")]`.
+    pub fields: IndexMap<String, (bool, TypeId)>,
+    /// The type of unknown fields (from `additionalProperties`).
+    ///
+    /// Produces a field annotated with `#[serde(default, flatten)]`,
+    /// with a type of `IndexMap<String, T>`, where `T` is the resolved `TypeId`.
+    pub unknown_of: Option<TypeId>,
+    // TODO
+    pub _min_props: usize,
+    pub _max_props: Option<usize>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
