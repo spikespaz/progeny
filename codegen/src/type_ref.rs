@@ -71,13 +71,13 @@ impl TypeRef {
         };
 
         Ok(Self {
-            ident: format_ident(inferred_name),
+            ident: format_ident_safe(inferred_name),
             reference: Some(reference),
         })
     }
 }
 
-pub fn format_ident(name: impl AsRef<str>) -> syn::Ident {
+pub fn format_ident_safe(name: impl AsRef<str>) -> syn::Ident {
     use check_keyword::CheckKeyword;
     use convert_case::{Boundary, Case, Casing as _};
 
@@ -132,7 +132,7 @@ pub fn format_ident(name: impl AsRef<str>) -> syn::Ident {
 mod tests {
     use test_case::test_case;
 
-    use super::{InferNameError, TypeRef};
+    use super::{InferNameError, TypeRef, format_ident_safe};
 
     #[test_case("foo" => "Foo" ; "simple lower")]
     #[test_case("foo_bar" => "FooBar" ; "snake case")]
@@ -147,7 +147,7 @@ mod tests {
     #[test_case("Self" => "Self_" ; "pascal keyword underscore")]
     #[test_case("_leading_underscore" => "LeadingUnderscore" ; "drop leading underscore")]
     fn format_ident(input: &str) -> String {
-        super::format_ident(input).to_string()
+        format_ident_safe(input).to_string()
     }
 
     //
