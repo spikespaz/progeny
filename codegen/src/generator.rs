@@ -44,16 +44,16 @@ impl<'a> Generator<'a> {
         for (template, path) in &self.spec.paths.paths {
             let (_, path) = self.resolver.resolve(path)?;
             for (method, op) in path.iter() {
-                let fn_name = {
-                    let mut name = match &op.operation_id {
+                let fn_name = format_ident_safe(
+                    match &op.operation_id {
+                        Some(op_id) if self.settings.prefix_operations => {
+                            Cow::Owned(format!("{method}_{op_id}"))
+                        }
                         Some(op_id) => Cow::Borrowed(op_id.as_ref()),
-                        None => Cow::Borrowed(template.as_ref()),
-                    };
-                    if self.settings.prefix_operations {
-                        name = Cow::Owned(format!("{method}_{name}"))
-                    }
-                    format_ident_safe(name, ConvertCase::Snake)
-                };
+                        None => Cow::Owned(format!("{method}_{template}")),
+                    },
+                    ConvertCase::Snake,
+                );
 
                 let mut path_args = Vec::new();
                 let mut query_args = Vec::new();
