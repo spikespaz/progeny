@@ -1,9 +1,11 @@
-use convert_case::{Case, Casing as _};
+use std::borrow::Cow;
+
 use openapiv3::{OpenAPI, Parameter};
 use proc_macro2::TokenStream;
-use quote::{format_ident, quote};
+use quote::quote;
 
 use crate::IntoCow;
+use crate::formatting::{ConvertCase, format_ident_safe};
 use crate::resolver::ReferenceResolver;
 
 #[derive(Debug, Default)]
@@ -44,13 +46,13 @@ impl<'a> Generator<'a> {
             for (method, op) in path.iter() {
                 let fn_name = {
                     let mut name = match &op.operation_id {
-                        Some(op_id) => op_id.to_case(Case::Snake),
-                        None => template.to_case(Case::Snake),
+                        Some(op_id) => Cow::Borrowed(op_id.as_ref()),
+                        None => Cow::Borrowed(template.as_ref()),
                     };
                     if self.settings.prefix_operations {
-                        name = format!("{method}_{name}")
+                        name = Cow::Owned(format!("{method}_{name}"))
                     }
-                    format_ident!("{name}")
+                    format_ident_safe(name, ConvertCase::Snake)
                 };
 
                 let mut path_args = Vec::new();
@@ -62,8 +64,8 @@ impl<'a> Generator<'a> {
                             parameter_data,
                             style,
                         } => {
-                            let arg_name = parameter_data.name.to_case(Case::Snake);
-                            let arg_name = format_ident!("{arg_name}");
+                            let arg_name =
+                                format_ident_safe(&parameter_data.name, ConvertCase::Snake);
                             path_args.push(quote!(#arg_name: ()));
                         }
                         Parameter::Query {
@@ -73,8 +75,8 @@ impl<'a> Generator<'a> {
                             allow_empty_value,
                         } => {
                             if parameter_data.required {
-                                let arg_name = parameter_data.name.to_case(Case::Snake);
-                                let arg_name = format_ident!("{arg_name}");
+                                let arg_name =
+                                    format_ident_safe(&parameter_data.name, ConvertCase::Snake);
                                 query_args.push(quote!(#arg_name: ()));
                             } else {
                                 eprintln!("optional query parameters to be in a type")
