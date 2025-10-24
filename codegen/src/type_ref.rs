@@ -71,61 +71,61 @@ impl TypeRef {
         };
 
         Ok(Self {
-            ident: Self::format_ident(inferred_name),
+            ident: format_ident(inferred_name),
             reference: Some(reference),
         })
     }
+}
 
-    pub fn format_ident(name: impl AsRef<str>) -> syn::Ident {
-        use convert_case::{Boundary, Case, Casing as _};
+pub fn format_ident(name: impl AsRef<str>) -> syn::Ident {
+    use convert_case::{Boundary, Case, Casing as _};
 
-        const PASCAL_CASE_KEYWORDS: &[&str] = &["Self"];
+    const PASCAL_CASE_KEYWORDS: &[&str] = &["Self"];
 
-        const NON_ALPHANUMERIC: Boundary = Boundary {
-            name: "NonAlphanumeric",
-            condition: |gs, _| {
-                gs.first()
-                    .and_then(|g| g.chars().next())
-                    .is_some_and(|ch| !ch.is_alphanumeric())
-            },
-            arg: None,
-            start: 0, // boundary before char
-            len: 1,   // consume one char
-        };
-        const UPPER_UPPER_LOWER: Boundary = Boundary {
-            name: "UpperUpperLower",
-            condition: |gs, _| {
-                matches!(
-                    std::array::from_fn(|i| gs.get(i).and_then(|g| g.chars().next())),
-                    [Some(a), Some(b), Some(c)] if a.is_uppercase() && b.is_uppercase() && c.is_lowercase()
-                )
-            },
-            arg: None,
-            start: 1, // boundary after the first uppercase char
-            len: 0,   // consume nothing
-        };
-        const TYPE_IDENT_BOUNDARIES: &[Boundary] = &[
-            NON_ALPHANUMERIC,
-            Boundary::LOWER_DIGIT,
-            Boundary::UPPER_DIGIT,
-            Boundary::DIGIT_LOWER,
-            Boundary::DIGIT_UPPER,
-            Boundary::LOWER_UPPER,
-            UPPER_UPPER_LOWER,
-        ];
+    const NON_ALPHANUMERIC: Boundary = Boundary {
+        name: "NonAlphanumeric",
+        condition: |gs, _| {
+            gs.first()
+                .and_then(|g| g.chars().next())
+                .is_some_and(|ch| !ch.is_alphanumeric())
+        },
+        arg: None,
+        start: 0, // boundary before char
+        len: 1,   // consume one char
+    };
+    const UPPER_UPPER_LOWER: Boundary = Boundary {
+        name: "UpperUpperLower",
+        condition: |gs, _| {
+            matches!(
+                std::array::from_fn(|i| gs.get(i).and_then(|g| g.chars().next())),
+                [Some(a), Some(b), Some(c)] if a.is_uppercase() && b.is_uppercase() && c.is_lowercase()
+            )
+        },
+        arg: None,
+        start: 1, // boundary after the first uppercase char
+        len: 0,   // consume nothing
+    };
+    const TYPE_IDENT_BOUNDARIES: &[Boundary] = &[
+        NON_ALPHANUMERIC,
+        Boundary::LOWER_DIGIT,
+        Boundary::UPPER_DIGIT,
+        Boundary::DIGIT_LOWER,
+        Boundary::DIGIT_UPPER,
+        Boundary::LOWER_UPPER,
+        UPPER_UPPER_LOWER,
+    ];
 
-        let name = name
-            .as_ref()
-            .with_boundaries(TYPE_IDENT_BOUNDARIES)
-            .to_case(Case::Pascal);
+    let name = name
+        .as_ref()
+        .with_boundaries(TYPE_IDENT_BOUNDARIES)
+        .to_case(Case::Pascal);
 
-        if name.starts_with(|c: char| !c.is_alphabetic())
-            || PASCAL_CASE_KEYWORDS.contains(&name.as_str())
-        {
-            quote::format_ident!("_{name}")
-        } else {
-            quote::format_ident!("{name}")
-        }
+    if name.starts_with(|c: char| !c.is_alphabetic())
+        || PASCAL_CASE_KEYWORDS.contains(&name.as_str())
+    {
+        quote::format_ident!("_{name}")
+    } else {
+        quote::format_ident!("{name}")
     }
 }
 
@@ -147,8 +147,8 @@ mod tests {
     #[test_case("123" => "_123" ; "leading digit underscore")]
     #[test_case("Self" => "_Self" ; "pascal keyword underscore")]
     #[test_case("_leading_underscore" => "LeadingUnderscore" ; "drop leading underscore")]
-    fn typeref_format_ident(input: &str) -> String {
-        TypeRef::format_ident(input).to_string()
+    fn format_ident(input: &str) -> String {
+        super::format_ident(input).to_string()
     }
 
     //
