@@ -1,10 +1,13 @@
 use std::num::NonZeroU64;
 
-use indexmap::IndexSet;
-use openapiv3::{ArrayType, BooleanType, IntegerType, Schema, SchemaKind, StringType, Type};
+use indexmap::{IndexMap, IndexSet};
+use openapiv3::{
+    AdditionalProperties, ArrayType, BooleanType, IntegerType, ObjectType, Schema, SchemaKind,
+    StringType, Type,
+};
 use slotmap::{SecondaryMap, SlotMap, new_key_type};
 
-use super::kinds::{Refinement, Scalar, Sequence, StringFormat};
+use super::kinds::{Record, Refinement, Scalar, Sequence, StringFormat};
 use super::{ScalarType as _, TypeKind};
 use crate::ReferenceResolver;
 use crate::resolver::ComponentId;
@@ -61,7 +64,7 @@ impl<'doc> TypeGraph<'doc> {
             SchemaKind::Type(Type::String(string_type)) => self.add_string_type(string_type),
             SchemaKind::Type(Type::Number(_number_type)) => todo!(),
             SchemaKind::Type(Type::Integer(integer_type)) => self.add_integer_type(integer_type)?,
-            SchemaKind::Type(Type::Object(_object_type)) => todo!(),
+            SchemaKind::Type(Type::Object(object_type)) => self.add_object_type(object_type)?,
             SchemaKind::Type(Type::Array(array_type)) => self.add_array_type(array_type)?,
             SchemaKind::Type(Type::Boolean(boolean_type)) => self.add_boolean_type(boolean_type),
             SchemaKind::OneOf { one_of: _ } => todo!(),
@@ -271,6 +274,66 @@ impl<'doc> TypeGraph<'doc> {
         }
 
         Ok(self.insert(type_kind))
+    }
+
+    pub fn add_object_type(&mut self, object_type: &ObjectType) -> Result<TypeId> {
+        let &ObjectType {
+            ref properties,
+            ref required,
+            ref additional_properties,
+            min_properties,
+            max_properties,
+        } = object_type;
+
+        let required = required.iter().collect::<IndexSet<_>>();
+
+        // Schema requires more properties than `maxProperties`.
+        if max_properties.is_none_or(|max| max < required.len()) {
+            return Ok(self.uninhabited_id);
+        }
+
+        let mut fields = IndexMap::new();
+
+        for (name, ref_or) in properties {
+            let (component_id, schema) = self.resolver.resolve(ref_or)?;
+            let type_id = self.intern_schema(component_id, &schema)?;
+            // Behavior for `required` must be lowered to AST generation,
+            // because this is not the same as `TypeKind::Nullable`.
+            let required = required.contains(name);
+            fields.insert(name.clone(), (required, type_id));
+        }
+
+        // <https://datatracker.ietf.org/doc/html/draft-wright-json-schema-validation-00#section-5.18>
+        let unknown_of = match additional_properties {
+            None | Some(AdditionalProperties::Any(true)) => Some(self.anything_id),
+            Some(AdditionalProperties::Any(false)) => None,
+            Some(AdditionalProperties::Schema(ref_or)) => {
+                let (component_id, schema) = self.resolver.resolve(ref_or)?;
+                let type_id = self.intern_schema(component_id, &schema)?;
+                Some(type_id)
+            }
+        };
+
+        // Schema does not have enough explicit properties to satisfy `minProperties`,
+        // and has forbidden `additionalProperties`.
+        if unknown_of.is_none() && min_properties.is_some_and(|min| min > properties.len()) {
+            return Ok(self.uninhabited_id);
+        }
+
+        // For all required properties not in `properties`, register a field with `unknown_of` type.
+        for name in required {
+            if !fields.contains_key(name) {
+                let type_id = unknown_of.unwrap_or(self.uninhabited_id);
+                fields.insert(name.clone(), (true, type_id));
+            }
+        }
+
+        Ok(self.insert(TypeKind::Record(Record {
+            fields,
+            unknown_of,
+            _min_props: min_properties.unwrap_or(0),
+            _max_props: max_properties,
+        })))
     }
 
     pub fn add_array_type(&mut self, array_type: &ArrayType) -> Result<TypeId> {
