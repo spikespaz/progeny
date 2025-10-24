@@ -78,9 +78,8 @@ impl TypeRef {
 }
 
 pub fn format_ident(name: impl AsRef<str>) -> syn::Ident {
+    use check_keyword::CheckKeyword;
     use convert_case::{Boundary, Case, Casing as _};
-
-    const PASCAL_CASE_KEYWORDS: &[&str] = &["Self"];
 
     const NON_ALPHANUMERIC: Boundary = Boundary {
         name: "NonAlphanumeric",
@@ -120,10 +119,10 @@ pub fn format_ident(name: impl AsRef<str>) -> syn::Ident {
         .with_boundaries(TYPE_IDENT_BOUNDARIES)
         .to_case(Case::Pascal);
 
-    if name.starts_with(|c: char| !c.is_alphabetic())
-        || PASCAL_CASE_KEYWORDS.contains(&name.as_str())
-    {
+    if name.starts_with(|c: char| !c.is_alphabetic()) {
         quote::format_ident!("_{name}")
+    } else if name.is_keyword() {
+        quote::format_ident!("{}", name.into_safe())
     } else {
         quote::format_ident!("{name}")
     }
@@ -145,7 +144,7 @@ mod tests {
     #[test_case("HTTPServer" => "HttpServer" ; "acronym then word")]
     #[test_case("123abc" => "_123Abc" ; "capitalize after digit")]
     #[test_case("123" => "_123" ; "leading digit underscore")]
-    #[test_case("Self" => "_Self" ; "pascal keyword underscore")]
+    #[test_case("Self" => "Self_" ; "pascal keyword underscore")]
     #[test_case("_leading_underscore" => "LeadingUnderscore" ; "drop leading underscore")]
     fn format_ident(input: &str) -> String {
         super::format_ident(input).to_string()
