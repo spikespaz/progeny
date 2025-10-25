@@ -111,8 +111,16 @@ impl<'doc> TypeGraph<'doc> {
         self.scalar_ids[ty.index()]
     }
 
+    pub fn anything_id(&self) -> TypeId {
+        self.anything_id
+    }
+
     pub fn uninhabited_id(&self) -> TypeId {
         self.uninhabited_id
+    }
+
+    pub fn null_id(&self) -> TypeId {
+        self.null_id
     }
 
     pub fn get_by_id(&self, type_id: TypeId) -> &TypeKind {
