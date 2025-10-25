@@ -1,12 +1,13 @@
 use std::borrow::Cow;
 
-use openapiv3::{OpenAPI, Parameter};
+use openapiv3::{OpenAPI, Parameter, ParameterData, ParameterSchemaOrContent as ParameterFormat};
 use proc_macro2::TokenStream;
-use quote::quote;
+use quote::{ToTokens, quote};
+use syn::parse_quote;
 
 use crate::IntoCow;
-use crate::formatting::to_snake_ident;
-use crate::resolver::ReferenceResolver;
+use crate::formatting::{to_snake_ident, to_type_ident};
+use crate::resolver::{Error as ResolveError, ReferenceResolver};
 
 #[derive(Debug, Default)]
 pub struct Settings {
@@ -54,35 +55,34 @@ impl<'a> Generator<'a> {
 
                 let mut path_args = Vec::new();
                 let mut query_args = Vec::new();
+
                 for param in &op.parameters {
                     let (_, param) = self.resolver.resolve(param)?;
+                    let param_data = param.parameter_data_ref();
+                    let arg_name = to_snake_ident(&param_data.name);
+                    let arg_type = resolve_param_type(param_data, &mut self.resolver)?;
+
                     match &*param {
                         Parameter::Path {
-                            parameter_data,
+                            parameter_data: _,
                             style,
                         } => {
-                            let arg_name = to_snake_ident(&parameter_data.name);
-                            path_args.push(quote!(#arg_name: ()));
+                            path_args.push(quote!(#arg_name: #arg_type));
                         }
                         Parameter::Query {
-                            parameter_data,
+                            parameter_data: _,
                             allow_reserved,
                             style,
                             allow_empty_value,
                         } => {
-                            if parameter_data.required {
-                                let arg_name = to_snake_ident(&parameter_data.name);
-                                query_args.push(quote!(#arg_name: ()));
-                            } else {
-                                eprintln!("optional query parameters to be in a type")
-                            }
+                            query_args.push(quote!(#arg_name: #arg_type));
                         }
                         Parameter::Header {
-                            parameter_data,
+                            parameter_data: _,
                             style,
                         } => eprintln!("header parameters not yet implemented"),
                         Parameter::Cookie {
-                            parameter_data,
+                            parameter_data: _,
                             style,
                         } => eprintln!("cookie parameters not yet implemented"),
                     }
@@ -100,4 +100,26 @@ impl<'a> Generator<'a> {
 
         Ok(tokens)
     }
+}
+
+fn resolve_param_type(
+    parameter_data: &ParameterData,
+    resolver: &mut ReferenceResolver,
+) -> Result<syn::Type, ResolveError> {
+    let ident = match &parameter_data.format {
+        ParameterFormat::Schema(ref_or) => {
+            let (_component_id, schema) = resolver.resolve(ref_or)?;
+            let schema_title = schema.schema_data.title.as_deref();
+            to_type_ident(schema_title.unwrap_or(&parameter_data.name))
+        }
+        ParameterFormat::Content(_index_map) => to_type_ident(&parameter_data.name),
+    };
+
+    let mut param_type = ident.into_token_stream();
+
+    if !parameter_data.required {
+        param_type = quote!(::core::option::Option<#param_type>);
+    }
+
+    Ok(parse_quote!(#param_type))
 }
