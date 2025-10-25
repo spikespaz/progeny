@@ -97,7 +97,7 @@ impl<'doc> TypeGraph<'doc> {
 
     /// Given a pre-resolved component and a [`Schema`], get the associated `TypeId`
     /// if it exists, otherwise, add the schema and register an association.
-    fn intern_schema(&mut self, component_id: ComponentId, schema: &Schema) -> Result<TypeId> {
+    pub fn intern_schema(&mut self, component_id: ComponentId, schema: &Schema) -> Result<TypeId> {
         if let Some((type_id, _)) = self.get_by_component(component_id) {
             Ok(type_id)
         } else {
