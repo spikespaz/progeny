@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use openapiv3::{OpenAPI, Parameter, ParameterData, ParameterSchemaOrContent as ParameterFormat};
 use proc_macro2::TokenStream;
-use quote::{ToTokens, quote};
+use quote::{ToTokens, format_ident, quote};
 use syn::parse_quote;
 
 use crate::IntoCow;
@@ -45,13 +45,15 @@ impl<'a> Generator<'a> {
         for (template, path) in &self.spec.paths.paths {
             let (_, path) = self.resolver.resolve(path)?;
             for (method, op) in path.iter() {
-                let fn_name = to_snake_ident(match &op.operation_id {
+                let op_name = match &op.operation_id {
                     Some(op_id) if self.settings.prefix_operations => {
                         Cow::Owned(format!("{method}_{op_id}"))
                     }
                     Some(op_id) => Cow::Borrowed(op_id.as_ref()),
                     None => Cow::Owned(format!("{method}_{template}")),
-                });
+                };
+
+                let fn_name = to_snake_ident(&op_name);
 
                 let mut path_args = Vec::new();
                 let mut query_args = Vec::new();
@@ -88,7 +90,25 @@ impl<'a> Generator<'a> {
                     }
                 }
 
-                let fn_args = std::iter::empty().chain(path_args).chain(query_args);
+                let mut body_arg = None;
+
+                if let Some(body) = &op.request_body {
+                    let (_, body) = self.resolver.resolve(body)?;
+                    // TODO: Proper conflict resolution.
+                    let arg_name = format_ident!("{method}_body");
+                    let mut arg_type = to_type_ident(&op_name).into_token_stream();
+
+                    if !body.required {
+                        arg_type = quote!(::core::option::Option<#arg_type>);
+                    }
+
+                    body_arg = Some(quote!(#arg_name: #arg_type));
+                }
+
+                let fn_args = std::iter::empty()
+                    .chain(path_args)
+                    .chain(query_args)
+                    .chain(body_arg);
 
                 tokens.extend(quote! {
                     pub fn #fn_name(#(#fn_args,)*) {
