@@ -30,14 +30,14 @@ pub mod stage {
 
     /// The [`Generator`][super::Generator] has been fully constructed
     /// and is ready to produce tokens.
-    pub struct Prepared<'a> {
-        pub(crate) types: TypeGraph<'a>,
+    pub struct Prepared<'cx> {
+        pub(crate) types: TypeGraph<'cx>,
         pub(crate) tokens: TokenStream,
     }
 
     /// The [`Generator`][super::Generator] has tokens ready for ingestion.
-    pub struct Finished<'a> {
-        pub(crate) types: TypeGraph<'a>,
+    pub struct Finished<'cx> {
+        pub(crate) types: TypeGraph<'cx>,
         pub(crate) tokens: TokenStream,
     }
 
@@ -54,16 +54,16 @@ pub mod stage {
 }
 
 #[derive(Debug)]
-pub struct Generator<'a, STAGE: stage::GeneratorStage> {
+pub struct Generator<'cx, STAGE: stage::GeneratorStage> {
     state: STAGE,
-    spec: &'a OpenAPI,
-    settings: &'a Settings,
-    resolver: ReferenceResolver<'a>,
+    spec: &'cx OpenAPI,
+    settings: &'cx Settings,
+    resolver: ReferenceResolver<'cx>,
 }
 
 impl Generator<'_, ()> {
     #[must_use]
-    pub fn new<'a>(spec: &'a OpenAPI, settings: &'a Settings) -> Generator<'a, Building> {
+    pub fn new<'cx>(spec: &'cx OpenAPI, settings: &'cx Settings) -> Generator<'cx, Building> {
         Generator {
             state: Building(()),
             spec,
@@ -73,17 +73,17 @@ impl Generator<'_, ()> {
     }
 }
 
-impl<'a> Generator<'a, Building> {
+impl<'cx> Generator<'cx, Building> {
     pub fn add_document(
         &mut self,
         url: impl Into<String>,
-        document: impl IntoCow<'a, serde_json::Value>,
+        document: impl IntoCow<'cx, serde_json::Value>,
     ) {
         self.resolver.add_document(url, document);
     }
 
     #[must_use]
-    pub fn build(self) -> Generator<'a, Prepared<'a>> {
+    pub fn build(self) -> Generator<'cx, Prepared<'cx>> {
         let types = TypeGraph::new(self.resolver.clone());
         Generator {
             state: Prepared {
@@ -97,8 +97,8 @@ impl<'a> Generator<'a, Building> {
     }
 }
 
-impl<'a> Generator<'a, Prepared<'a>> {
-    pub fn run(mut self) -> anyhow::Result<Generator<'a, Finished<'a>>> {
+impl<'cx> Generator<'cx, Prepared<'cx>> {
+    pub fn run(mut self) -> anyhow::Result<Generator<'cx, Finished<'cx>>> {
         for (template, path) in &self.spec.paths.paths {
             let (_, path) = self.resolver.resolve(path)?;
             for (method, op) in path.iter() {
