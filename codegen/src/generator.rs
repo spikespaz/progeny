@@ -1,6 +1,10 @@
 use std::borrow::Cow;
+use std::rc::Rc;
 
-use openapiv3::{OpenAPI, Parameter, ParameterData, ParameterSchemaOrContent as ParameterFormat};
+use indexmap::IndexMap;
+use openapiv3::{
+    Content, OpenAPI, Parameter, ParameterData, ParameterSchemaOrContent as ParameterFormat, Schema,
+};
 use proc_macro2::TokenStream;
 use quote::{ToTokens, format_ident, quote};
 use syn::parse_quote;
@@ -9,7 +13,7 @@ use self::stage::{Building, Finished, Prepared};
 use crate::IntoCow;
 use crate::formatting::{to_snake_ident, to_type_ident};
 use crate::resolver::{Error as ResolveError, ReferenceResolver};
-use crate::type_model::TypeGraph;
+use crate::type_model::{TypeGraph, TypeId};
 
 #[derive(Debug, Default)]
 pub struct Settings {
@@ -184,6 +188,55 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
             settings: self.settings,
             resolver: self.resolver,
         })
+    }
+
+    fn intern_content_schemas<'a>(
+        &mut self,
+        content: &'a Content,
+    ) -> anyhow::Result<IndexMap<&'a str, (TypeId, Rc<Schema>)>> {
+        let mut content_schemas = IndexMap::new();
+
+        for (media_type, object) in content {
+            let media_type = media_type.as_str();
+
+            let (type_id, schema) = if let Some(ref_or) = &object.schema {
+                let (component_id, schema) = self.resolver.resolve(ref_or)?;
+                let type_id = self.state.types.intern_schema(component_id, &schema)?;
+
+                (type_id, schema)
+            } else {
+                let schema = match media_type {
+                    "text/plain" => serde_json::json!({
+                        "type": "string",
+                    }),
+                    // Empty JSON object will produce an empty schema, `TypeKind::Anything`.
+                    "application/json" => serde_json::Value::Object(Default::default()),
+                    "application/octet-stream" => serde_json::json!({
+                        "type": "string",
+                        "format": "binary",
+                    }),
+                    "application/x-www-form-urlencoded" => serde_json::json!({
+                        "type": "object",
+                        "additionalProperties": {
+                            "type": "string",
+                        },
+                    }),
+                    "multipart/form-data" => serde_json::json!({
+                        "type": "object",
+                        "additionalProperties": true,
+                    }),
+                    _ => anyhow::bail!("unknown media type with no schema: {media_type}"),
+                };
+                let schema = serde_json::from_value(schema).unwrap();
+                let type_id = self.state.types.add_schema(&schema).unwrap();
+
+                (type_id, Rc::new(schema))
+            };
+
+            content_schemas.insert(media_type, (type_id, schema));
+        }
+
+        Ok(content_schemas)
     }
 }
 
