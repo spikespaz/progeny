@@ -12,6 +12,7 @@ use syn::parse_quote;
 use self::stage::{Building, Finished, Prepared};
 use crate::IntoCow;
 use crate::formatting::{to_snake_ident, to_type_ident};
+use crate::macros::static_json;
 use crate::resolver::{Error as ResolveError, ReferenceResolver};
 use crate::type_model::{TypeGraph, TypeId};
 
@@ -205,32 +206,10 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
 
                 (type_id, schema)
             } else {
-                let schema = match media_type {
-                    "text/plain" => serde_json::json!({
-                        "type": "string",
-                    }),
-                    // Empty JSON object will produce an empty schema, `TypeKind::Anything`.
-                    "application/json" => serde_json::Value::Object(Default::default()),
-                    "application/octet-stream" => serde_json::json!({
-                        "type": "string",
-                        "format": "binary",
-                    }),
-                    "application/x-www-form-urlencoded" => serde_json::json!({
-                        "type": "object",
-                        "additionalProperties": {
-                            "type": "string",
-                        },
-                    }),
-                    "multipart/form-data" => serde_json::json!({
-                        "type": "object",
-                        "additionalProperties": true,
-                    }),
-                    _ => anyhow::bail!("unknown media type with no schema: {media_type}"),
-                };
-                let schema = serde_json::from_value(schema).unwrap();
-                let type_id = self.state.types.add_schema(&schema).unwrap();
+                let schema = default_content_schema(media_type)?;
+                let type_id = self.state.types.add_schema(schema).unwrap();
 
-                (type_id, Rc::new(schema))
+                (type_id, Rc::new(schema.clone()))
             };
 
             content_schemas.insert(media_type, (type_id, schema));
@@ -270,4 +249,36 @@ fn resolve_param_type(
     }
 
     Ok(parse_quote!(#param_type))
+}
+
+fn default_content_schema(media_type: &str) -> anyhow::Result<&'static Schema> {
+    static_json! {
+        static SCHEMA_ANYTHING: Schema = {};
+        static SCHEMA_PLAIN_STRING: Schema = {
+            "type": "string"
+        };
+        static SCHEMA_BINARY_STRING: Schema = {
+            "type": "string",
+            "format": "binary"
+        };
+        static SCHEMA_STRING_RECORD: Schema = {
+            "type": "object",
+            "additionalProperties": { "type": "string" }
+        };
+        static SCHEMA_ANYTHING_RECORD: Schema = {
+            "type": "object",
+            "additionalProperties": true
+        };
+    };
+
+    let schema = match media_type {
+        "text/plain" => &SCHEMA_PLAIN_STRING,
+        "application/json" => &SCHEMA_ANYTHING,
+        "application/octet-stream" => &SCHEMA_BINARY_STRING,
+        "application/x-www-form-urlencoded" => &SCHEMA_STRING_RECORD,
+        "multipart/form-data" => &SCHEMA_ANYTHING_RECORD,
+        _ => anyhow::bail!("unknown media type with no schema: {media_type}"),
+    };
+
+    Ok(schema)
 }
