@@ -9,6 +9,7 @@ use self::stage::{Building, Finished, Prepared};
 use crate::IntoCow;
 use crate::formatting::{to_snake_ident, to_type_ident};
 use crate::resolver::{Error as ResolveError, ReferenceResolver};
+use crate::type_model::TypeGraph;
 
 #[derive(Debug, Default)]
 pub struct Settings {
@@ -17,6 +18,8 @@ pub struct Settings {
 }
 
 pub mod stage {
+    use crate::type_model::TypeGraph;
+
     pub trait GeneratorStage: crate::Sealed {}
 
     /// The [`Generator`][super::Generator] is still in construction phase,
@@ -25,26 +28,28 @@ pub mod stage {
 
     /// The [`Generator`][super::Generator] has been fully constructed
     /// and is ready to produce tokens.
-    pub struct Prepared(pub(crate) ());
+    pub struct Prepared<'a> {
+        pub(crate) types: TypeGraph<'a>,
+    }
 
     /// The [`Generator`][super::Generator] has tokens ready for ingestion.
     pub struct Finished(pub(crate) ());
 
     const _: () = {
         impl crate::Sealed for Building {}
-        impl crate::Sealed for Prepared {}
+        impl crate::Sealed for Prepared<'_> {}
         impl crate::Sealed for Finished {}
 
         impl GeneratorStage for () {}
         impl GeneratorStage for Building {}
-        impl GeneratorStage for Prepared {}
+        impl GeneratorStage for Prepared<'_> {}
         impl GeneratorStage for Finished {}
     };
 }
 
 #[derive(Debug)]
 pub struct Generator<'a, STAGE: stage::GeneratorStage> {
-    _stage: STAGE,
+    state: STAGE,
     spec: &'a OpenAPI,
     settings: &'a Settings,
     resolver: ReferenceResolver<'a>,
@@ -54,7 +59,7 @@ impl Generator<'_, ()> {
     #[must_use]
     pub fn new<'a>(spec: &'a OpenAPI, settings: &'a Settings) -> Generator<'a, Building> {
         Generator {
-            _stage: Building(()),
+            state: Building(()),
             spec,
             settings,
             resolver: ReferenceResolver::new(spec),
@@ -72,9 +77,10 @@ impl<'a> Generator<'a, Building> {
     }
 
     #[must_use]
-    pub fn build(self) -> Generator<'a, Prepared> {
+    pub fn build(self) -> Generator<'a, Prepared<'a>> {
+        let types = TypeGraph::new(self.resolver.clone());
         Generator {
-            _stage: Prepared(()),
+            state: Prepared { types },
             spec: self.spec,
             settings: self.settings,
             resolver: self.resolver,
@@ -82,7 +88,7 @@ impl<'a> Generator<'a, Building> {
     }
 }
 
-impl Generator<'_, Prepared> {
+impl Generator<'_, Prepared<'_>> {
     pub fn run(&mut self) -> anyhow::Result<TokenStream> {
         let mut tokens = TokenStream::new();
 
