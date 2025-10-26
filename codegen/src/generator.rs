@@ -18,6 +18,8 @@ pub struct Settings {
 }
 
 pub mod stage {
+    use proc_macro2::TokenStream;
+
     use crate::type_model::TypeGraph;
 
     pub trait GeneratorStage: crate::Sealed {}
@@ -30,20 +32,24 @@ pub mod stage {
     /// and is ready to produce tokens.
     pub struct Prepared<'a> {
         pub(crate) types: TypeGraph<'a>,
+        pub(crate) tokens: TokenStream,
     }
 
     /// The [`Generator`][super::Generator] has tokens ready for ingestion.
-    pub struct Finished(pub(crate) ());
+    pub struct Finished<'a> {
+        pub(crate) types: TypeGraph<'a>,
+        pub(crate) tokens: TokenStream,
+    }
 
     const _: () = {
         impl crate::Sealed for Building {}
         impl crate::Sealed for Prepared<'_> {}
-        impl crate::Sealed for Finished {}
+        impl crate::Sealed for Finished<'_> {}
 
         impl GeneratorStage for () {}
         impl GeneratorStage for Building {}
         impl GeneratorStage for Prepared<'_> {}
-        impl GeneratorStage for Finished {}
+        impl GeneratorStage for Finished<'_> {}
     };
 }
 
@@ -80,7 +86,10 @@ impl<'a> Generator<'a, Building> {
     pub fn build(self) -> Generator<'a, Prepared<'a>> {
         let types = TypeGraph::new(self.resolver.clone());
         Generator {
-            state: Prepared { types },
+            state: Prepared {
+                types,
+                tokens: TokenStream::new(),
+            },
             spec: self.spec,
             settings: self.settings,
             resolver: self.resolver,
@@ -88,10 +97,8 @@ impl<'a> Generator<'a, Building> {
     }
 }
 
-impl Generator<'_, Prepared<'_>> {
-    pub fn run(&mut self) -> anyhow::Result<TokenStream> {
-        let mut tokens = TokenStream::new();
-
+impl<'a> Generator<'a, Prepared<'a>> {
+    pub fn run(mut self) -> anyhow::Result<Generator<'a, Finished<'a>>> {
         for (template, path) in &self.spec.paths.paths {
             let (_, path) = self.resolver.resolve(path)?;
             for (method, op) in path.iter() {
@@ -160,7 +167,7 @@ impl Generator<'_, Prepared<'_>> {
                     .chain(query_args)
                     .chain(body_arg);
 
-                tokens.extend(quote! {
+                self.state.tokens.extend(quote! {
                     pub fn #fn_name(#(#fn_args,)*) {
                         todo!()
                     }
@@ -168,13 +175,25 @@ impl Generator<'_, Prepared<'_>> {
             }
         }
 
-        Ok(tokens)
+        Ok(Generator {
+            state: Finished {
+                types: self.state.types,
+                tokens: self.state.tokens,
+            },
+            spec: self.spec,
+            settings: self.settings,
+            resolver: self.resolver,
+        })
     }
 }
 
-impl Generator<'_, Finished> {
+impl Generator<'_, Finished<'_>> {
+    pub fn types(&self) -> &TypeGraph<'_> {
+        &self.state.types
+    }
+
     pub fn take_tokens(&mut self) -> TokenStream {
-        todo!()
+        std::mem::take(&mut self.state.tokens)
     }
 }
 
