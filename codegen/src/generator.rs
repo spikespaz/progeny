@@ -5,6 +5,7 @@ use proc_macro2::TokenStream;
 use quote::{ToTokens, format_ident, quote};
 use syn::parse_quote;
 
+use self::stage::{Building, Finished, Prepared};
 use crate::IntoCow;
 use crate::formatting::{to_snake_ident, to_type_ident};
 use crate::resolver::{Error as ResolveError, ReferenceResolver};
@@ -15,22 +16,53 @@ pub struct Settings {
     pub prefix_operations: bool,
 }
 
+pub mod stage {
+    pub trait GeneratorStage: crate::Sealed {}
+
+    /// The [`Generator`][super::Generator] is still in construction phase,
+    /// where builder methods are accessible.
+    pub struct Building(pub(crate) ());
+
+    /// The [`Generator`][super::Generator] has been fully constructed
+    /// and is ready to produce tokens.
+    pub struct Prepared(pub(crate) ());
+
+    /// The [`Generator`][super::Generator] has tokens ready for ingestion.
+    pub struct Finished(pub(crate) ());
+
+    const _: () = {
+        impl crate::Sealed for Building {}
+        impl crate::Sealed for Prepared {}
+        impl crate::Sealed for Finished {}
+
+        impl GeneratorStage for () {}
+        impl GeneratorStage for Building {}
+        impl GeneratorStage for Prepared {}
+        impl GeneratorStage for Finished {}
+    };
+}
+
 #[derive(Debug)]
-pub struct Generator<'a> {
+pub struct Generator<'a, STAGE: stage::GeneratorStage> {
+    _stage: STAGE,
     spec: &'a OpenAPI,
     settings: &'a Settings,
     resolver: ReferenceResolver<'a>,
 }
 
-impl<'a> Generator<'a> {
-    pub fn new(spec: &'a OpenAPI, settings: &'a Settings) -> Self {
-        Self {
+impl Generator<'_, ()> {
+    #[must_use]
+    pub fn new<'a>(spec: &'a OpenAPI, settings: &'a Settings) -> Generator<'a, Building> {
+        Generator {
+            _stage: Building(()),
             spec,
             settings,
             resolver: ReferenceResolver::new(spec),
         }
     }
+}
 
+impl<'a> Generator<'a, Building> {
     pub fn add_document(
         &mut self,
         url: impl Into<String>,
@@ -39,6 +71,18 @@ impl<'a> Generator<'a> {
         self.resolver.add_document(url, document);
     }
 
+    #[must_use]
+    pub fn build(self) -> Generator<'a, Prepared> {
+        Generator {
+            _stage: Prepared(()),
+            spec: self.spec,
+            settings: self.settings,
+            resolver: self.resolver,
+        }
+    }
+}
+
+impl Generator<'_, Prepared> {
     pub fn run(&mut self) -> anyhow::Result<TokenStream> {
         let mut tokens = TokenStream::new();
 
@@ -119,6 +163,12 @@ impl<'a> Generator<'a> {
         }
 
         Ok(tokens)
+    }
+}
+
+impl Generator<'_, Finished> {
+    pub fn take_tokens(&mut self) -> TokenStream {
+        todo!()
     }
 }
 

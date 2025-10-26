@@ -12,4 +12,6 @@ pub(crate) use crate::into_cow::IntoCow;
 #[doc(hidden)]
 mod __sealed {
     pub trait Sealed {}
+
+    impl Sealed for () {}
 }
