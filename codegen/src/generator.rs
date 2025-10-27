@@ -126,6 +126,28 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
                     let arg_name = to_snake_ident(&param_data.name);
                     let arg_type = resolve_param_type(param_data, &mut self.resolver)?;
 
+                    let (type_id, schema) = match &param_data.format {
+                        ParameterFormat::Schema(ref_or) => {
+                            let (component_id, schema) = self.resolver.resolve(ref_or)?;
+                            let type_id = self.state.types.intern_schema(component_id, &schema)?;
+
+                            (type_id, schema)
+                        }
+                        ParameterFormat::Content(content) => {
+                            let content_schemas = self.intern_content_schemas(content)?;
+                            let (1, Some((_media_type, (type_id, schema)))) =
+                                (content_schemas.len(), content_schemas.into_iter().next())
+                            else {
+                                anyhow::bail!(
+                                    "parameter '{}' must have exactly one content type",
+                                    param_data.name
+                                );
+                            };
+
+                            (type_id, schema)
+                        }
+                    };
+
                     match &*param {
                         Parameter::Path {
                             parameter_data: _,
