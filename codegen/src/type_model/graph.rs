@@ -423,25 +423,25 @@ impl<'doc> TypeGraph<'doc> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::LazyLock;
-
     use indexmap::IndexSet;
     use openapiv3::{IntegerType, OpenAPI};
     use test_case::test_case;
 
     use super::TypeGraph;
+    use crate::macros::static_json;
     use crate::resolver::ReferenceResolver;
     use crate::type_model::kinds::{IntegerKind, Refinement, Scalar, TypeKind};
 
-    static EMPTY_SPEC: LazyLock<OpenAPI> = LazyLock::new(|| OpenAPI {
-        openapi: "3.0.4".to_owned(),
-        info: openapiv3::Info {
-            title: "".to_owned(),
-            version: "0".to_owned(),
-            ..Default::default()
-        },
-        ..Default::default()
-    });
+    static_json! {
+        static EMPTY_SPEC: OpenAPI = {
+            "openapi": "3.0.4",
+            "info": {
+                "title": "",
+                "version": "0"
+            },
+            "paths": {}
+        };
+    }
 
     fn empty_type_graph() -> TypeGraph<'static> {
         TypeGraph::new(ReferenceResolver::new(&EMPTY_SPEC))
