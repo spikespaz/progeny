@@ -195,13 +195,27 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
 
                 if let Some(body) = &op.request_body {
                     let (_, body) = self.resolver.resolve(body)?;
+
                     // TODO: Proper conflict resolution.
                     let arg_name = format_ident!("{method}_body");
-                    let mut arg_type = to_type_ident(&op_name).into_token_stream();
 
-                    if !body.required {
-                        arg_type = quote!(::core::option::Option<#arg_type>);
-                    }
+                    let content_schemas = self.intern_content_schemas(&body.content)?;
+
+                    let Some(&(type_id, ref schema)) = content_schemas.get("application/json")
+                    else {
+                        todo!("only 'application/json' bodies supported for now")
+                    };
+
+                    let arg_type = {
+                        let schema_title = &schema.schema_data.title;
+                        let name = schema_title.as_deref().unwrap_or(op_name.as_ref());
+                        let arg_type = to_type_ident(name).into_token_stream();
+                        if !body.required {
+                            quote!(::core::option::Option<#arg_type>)
+                        } else {
+                            arg_type
+                        }
+                    };
 
                     body_arg = Some(quote!(#arg_name: #arg_type));
                 }
