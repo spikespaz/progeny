@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::rc::Rc;
+use std::str::FromStr;
 
 use indexmap::{IndexMap, IndexSet};
 use openapiv3::{Content, OpenAPI, Parameter, ParameterSchemaOrContent as ParameterFormat, Schema};
@@ -323,14 +324,74 @@ fn default_content_schema(media_type: &str) -> anyhow::Result<&'static Schema> {
         };
     };
 
-    let schema = match media_type {
-        "text/plain" => &SCHEMA_PLAIN_STRING,
-        "application/json" => &SCHEMA_ANYTHING,
-        "application/octet-stream" => &SCHEMA_BINARY_STRING,
-        "application/x-www-form-urlencoded" => &SCHEMA_STRING_RECORD,
-        "multipart/form-data" => &SCHEMA_ANYTHING_RECORD,
-        _ => anyhow::bail!("unknown media type with no schema: {media_type}"),
+    let media_class = MediaClass::from_str(media_type)
+        .map_err(|e| anyhow::anyhow!("invalid media type '{media_type}': {e}"))?;
+
+    let schema = match media_class {
+        MediaClass::Json => &SCHEMA_ANYTHING,
+        MediaClass::PlainText => &SCHEMA_PLAIN_STRING,
+        MediaClass::OpaqueBytes => &SCHEMA_BINARY_STRING,
+        MediaClass::FormUrlEncoded => &SCHEMA_STRING_RECORD,
+        MediaClass::MultipartForm => &SCHEMA_ANYTHING_RECORD,
+        MediaClass::Unknown(other) => anyhow::bail!("unknown media type with no schema: {other}"),
     };
 
     Ok(schema)
+}
+
+/// The classification of a [`MediaType`][mediatype::MediaType].
+///
+/// This would typically come from [`Content`].
+#[derive(Clone, Debug, PartialEq)]
+pub enum MediaClass {
+    /// `application/json`, `text/json`, or `*+json`.
+    Json,
+    /// `text/plain`
+    PlainText,
+    /// `application/octet-stream`
+    OpaqueBytes,
+    /// `application/x-www-form-urlencoded`
+    FormUrlEncoded,
+    /// `multipart/form-data`
+    MultipartForm,
+    /// Anything else, preserving the type, subtype, and suffix, but not the parameters.
+    ///
+    /// See [`MediaType::essence`][mediatype::MediaType::essence].
+    Unknown(mediatype::MediaTypeBuf),
+}
+
+impl FromStr for MediaClass {
+    type Err = mediatype::MediaTypeError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        use mediatype::MediaType;
+        use mediatype::names::*;
+
+        // <https://github.com/picoHz/mediatype/pull/24>
+        macro_rules! new {
+            ($($tt:tt)+) => { const { mediatype::media_type!($($tt)+) } }
+        }
+
+        let media_type = MediaType::parse(s)?;
+        let media_type = media_type.essence();
+
+        let class = if media_type == new!(APPLICATION / JSON)
+            || media_type == new!(TEXT / JSON)
+            || media_type.suffix == Some(JSON)
+        {
+            Self::Json
+        } else if media_type == new!(TEXT / PLAIN) {
+            Self::PlainText
+        } else if media_type == new!(APPLICATION / OCTET_STREAM) {
+            Self::OpaqueBytes
+        } else if media_type == new!(APPLICATION / x_::WWW_FORM_URLENCODED) {
+            Self::FormUrlEncoded
+        } else if media_type == new!(MULTIPART / FORM_DATA) {
+            Self::MultipartForm
+        } else {
+            Self::Unknown(media_type.into())
+        };
+
+        Ok(class)
+    }
 }

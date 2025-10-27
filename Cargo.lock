@@ -63,6 +63,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4a5f13b858c8d314ee3e8f639011f7ccefe71f97f96e50151fb991f267928e2c"
 
 [[package]]
+name = "mediatype"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f490ea2ae935dd8ac89c472d4df28c7f6b87cc20767e1b21fd5ed6a16e7f61e4"
+
+[[package]]
 name = "memchr"
 version = "2.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -162,6 +168,7 @@ dependencies = [
  "check_keyword",
  "convert_case",
  "indexmap",
+ "mediatype",
  "openapiv3",
  "percent-encoding",
  "proc-macro2",
