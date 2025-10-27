@@ -55,6 +55,15 @@ pub mod stage {
     };
 }
 
+/// The entry-point for the crate; a stateful generator to read an
+/// OpenAPI 3.0.x specification, generate Rust types from schemas, and builder
+/// functions for HTTP requests.
+///
+/// # Example `build.rs`
+///
+/// ```rust
+#[doc = include_str!("../../examples/petstore/build.rs")]
+/// ```
 #[derive(Debug)]
 pub struct Generator<'cx, STAGE: stage::GeneratorStage> {
     state: STAGE,
