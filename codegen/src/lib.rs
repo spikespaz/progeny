@@ -1,5 +1,6 @@
 pub mod formatting;
 pub mod generator;
+pub mod macros;
 pub mod resolver;
 pub mod type_model;
 
