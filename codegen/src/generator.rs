@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::rc::Rc;
 
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use openapiv3::{Content, OpenAPI, Parameter, ParameterSchemaOrContent as ParameterFormat, Schema};
 use proc_macro2::TokenStream;
 use quote::{ToTokens, format_ident, quote};
@@ -110,6 +110,21 @@ impl<'cx> Generator<'cx, Building> {
 
 impl<'cx> Generator<'cx, Prepared<'cx>> {
     pub fn run(mut self) -> anyhow::Result<Generator<'cx, Finished<'cx>>> {
+        let mut type_names = IndexMap::<TypeId, IndexSet<String>>::new();
+
+        let insert_type_alias = &mut |type_id, name| {
+            use indexmap::map::Entry;
+            match type_names.entry(type_id) {
+                Entry::Occupied(mut entry) => {
+                    entry.get_mut().insert(name);
+                }
+                Entry::Vacant(slot) => {
+                    let names = IndexSet::<_>::from_iter([name]);
+                    slot.insert(names);
+                }
+            }
+        };
+
         for (template, path) in &self.spec.paths.paths {
             let (_, path) = self.resolver.resolve(path)?;
             for (method, op) in path.iter() {
@@ -158,6 +173,9 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
                         let schema_title = schema.schema_data.title.as_deref();
                         let name = schema_title.unwrap_or(param_data.name.as_str());
                         let arg_type = to_type_ident(name).into_token_stream();
+
+                        insert_type_alias(type_id, arg_type.to_string());
+
                         if !param_data.required {
                             quote!(::core::option::Option<#arg_type>)
                         } else {
@@ -210,6 +228,9 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
                         let schema_title = &schema.schema_data.title;
                         let name = schema_title.as_deref().unwrap_or(op_name.as_ref());
                         let arg_type = to_type_ident(name).into_token_stream();
+
+                        insert_type_alias(type_id, arg_type.to_string());
+
                         if !body.required {
                             quote!(::core::option::Option<#arg_type>)
                         } else {
