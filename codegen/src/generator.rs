@@ -377,10 +377,7 @@ impl FromStr for MediaClass {
         use mediatype::MediaType;
         use mediatype::names::*;
 
-        // <https://github.com/picoHz/mediatype/pull/24>
-        macro_rules! new {
-            ($($tt:tt)+) => { const { mediatype::media_type!($($tt)+) } }
-        }
+        use crate::macros::media_type as new;
 
         let media_type = MediaType::parse(s)?;
         let media_type = media_type.essence();
