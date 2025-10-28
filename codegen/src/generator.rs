@@ -330,7 +330,7 @@ fn default_content_schema(media_type: &str) -> anyhow::Result<&'static Schema> {
         MediaClass::OpaqueBytes => &SCHEMA_BINARY_STRING,
         MediaClass::FormUrlEncoded => &SCHEMA_STRING_RECORD,
         MediaClass::MultipartForm => &SCHEMA_MULTIPART_RECORD,
-        MediaClass::Unknown(other) => anyhow::bail!("unknown media type with no schema: {other}"),
+        MediaClass::Unknown => anyhow::bail!("unknown media type with no schema: {media_type}"),
     };
 
     Ok(schema)
@@ -339,7 +339,7 @@ fn default_content_schema(media_type: &str) -> anyhow::Result<&'static Schema> {
 /// The classification of a [`MediaType`][mediatype::MediaType].
 ///
 /// This would typically come from [`Content`].
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum MediaClass {
     /// `application/json`, `text/json`, or `*+json`.
     Json,
@@ -351,10 +351,8 @@ pub enum MediaClass {
     FormUrlEncoded,
     /// `multipart/form-data`
     MultipartForm,
-    /// Anything else, preserving the type, subtype, and suffix, but not the parameters.
-    ///
-    /// See [`MediaType::essence`][mediatype::MediaType::essence].
-    Unknown(mediatype::MediaTypeBuf),
+    /// The provided media type could not be classified by this crate.
+    Unknown,
 }
 
 impl FromStr for MediaClass {
@@ -386,7 +384,7 @@ impl FromStr for MediaClass {
         } else if media_type == new!(MULTIPART / FORM_DATA) {
             Self::MultipartForm
         } else {
-            Self::Unknown(media_type.into())
+            Self::Unknown
         };
 
         Ok(class)
