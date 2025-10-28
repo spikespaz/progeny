@@ -235,12 +235,25 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
                     // TODO: Proper conflict resolution.
                     let arg_name = format_ident!("{method}_body");
 
+                    let Some((_, (media_type, object))) = body
+                        .content
+                        .iter()
+                        .filter_map(|(media_type, object)| {
+                            Some((MediaType::parse(media_type).ok()?, object))
+                        })
+                        .enumerate()
+                        .min_by_key(|&(index, (ref media_type, _))| {
+                            rank_media_type(media_type, index, self.settings.content_preference)
+                        })
+                    else {
+                        anyhow::bail!(
+                            "no useful media type for body of path '{template}' method '{method}'",
+                        );
+                    };
+
+                    // TODO: Pass `media_type` verbatim.
                     let (type_id, schema) =
-                        if let Some(object) = body.content.get("application/json") {
-                            self.intern_content_schema("application/json", object)?
-                        } else {
-                            todo!("only 'application/json' bodies supported for now")
-                        };
+                        self.intern_content_schema(&media_type.to_string(), object)?;
 
                     let arg_type = {
                         let schema_title = &schema.schema_data.title;
