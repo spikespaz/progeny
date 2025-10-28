@@ -150,23 +150,30 @@ macro_rules! impl_scalar_types {
             pub const TYPES: [Scalar; Self::COUNT] = [$($Scalar,)*];
         }
     };
-    ( @impl, $( $Scalar:pat )* ) => {
-        impl Scalar {
-            pub const fn index(self) -> usize {
-                let mut i = 0;
-                while i < Self::COUNT {
-                    match (self, Self::TYPES[i]) {
-                        $(($Scalar, $Scalar) => return i,)*
-                        _ => i += 1,
-                    }
+    ( @impl index, $( $Scalar:pat )* ) => {
+        const fn index_(scalar: Scalar) -> usize {
+            let mut i = 0;
+            while i < Scalar::COUNT {
+                match (scalar, Scalar::TYPES[i]) {
+                    $(($Scalar, $Scalar) => return i,)*
+                    _ => i += 1,
                 }
-                unreachable!();
             }
+            unreachable!();
         }
     };
     ( $( ( $rust_ty:ty => $( $Scalar:tt )+ ) ; )* ) => {
         impl_scalar_types!(@impl, $($rust_ty => $($Scalar)+)*);
-        impl_scalar_types!(@impl, $($($Scalar)+)*);
+
+        impl Scalar {
+            pub const fn index(self) -> usize {
+                impl_scalar_types!(@impl index, $($($Scalar)+)*);
+
+                match self {
+                    $($($Scalar)+ => const { index_($($Scalar)+) },)*
+                }
+            }
+        }
     };
 }
 
