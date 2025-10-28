@@ -3,6 +3,7 @@ use std::rc::Rc;
 use std::str::FromStr;
 
 use indexmap::{IndexMap, IndexSet};
+use mediatype::MediaType;
 use openapiv3::{
     MediaType as ContentObject, OpenAPI, Parameter, ParameterSchemaOrContent as ParameterFormat,
     Schema,
@@ -309,6 +310,36 @@ impl Generator<'_, Finished<'_>> {
     pub fn take_tokens(&mut self) -> TokenStream {
         std::mem::take(&mut self.state.tokens)
     }
+}
+
+fn rank_media_type(
+    media_type: &MediaType<'_>,
+    index: usize,
+    preference: &[MediaClass],
+) -> impl Ord + use<> {
+    use crate::macros::media_type as new;
+
+    let essence = media_type.essence();
+    // TODO: Don't parse twice.
+    let media_class = MediaClass::from_str(&essence.to_string()).expect("already parsed");
+
+    let base_ord = preference
+        .iter()
+        .position(|&pref| pref == media_class)
+        .unwrap_or(usize::MAX);
+
+    let tie_break = match media_class {
+        MediaClass::Json if essence == new!(APPLICATION / JSON) => 0,
+        MediaClass::Json if essence == new!(TEXT / JSON) => 1,
+        MediaClass::Json => 2,
+        _ => 0_usize,
+    };
+
+    // Prefer fewer parameters, since they may be disrespected.
+    let params_len = media_type.params.len();
+
+    // Relies on tuple lexicographic ordering.
+    (base_ord, tie_break, params_len, index)
 }
 
 fn default_content_schema(media_type: &str) -> anyhow::Result<&'static Schema> {
