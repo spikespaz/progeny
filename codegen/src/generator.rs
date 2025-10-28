@@ -17,10 +17,25 @@ use crate::macros::static_json;
 use crate::resolver::ReferenceResolver;
 use crate::type_model::{TypeGraph, TypeId};
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Settings {
     /// Whether each operation will be prefixed by its HTTP method.
     pub prefix_operations: bool,
+    /// Media type classifications to choose among a body [`Content`][openapiv3::Content]
+    /// with multiple objects, in order of descending preference.
+    pub content_preference: &'static [MediaClass],
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            prefix_operations: false,
+            content_preference: {
+                use MediaClass::*;
+                &[Json, FormUrlEncoded, MultipartForm, PlainText, OpaqueBytes]
+            },
+        }
+    }
 }
 
 pub mod stage {
