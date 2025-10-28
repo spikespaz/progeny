@@ -318,9 +318,14 @@ fn default_content_schema(media_type: &str) -> anyhow::Result<&'static Schema> {
             "type": "object",
             "additionalProperties": { "type": "string" }
         };
-        static SCHEMA_ANYTHING_RECORD: Schema = {
+        static SCHEMA_MULTIPART_RECORD: Schema = {
             "type": "object",
-            "additionalProperties": true
+            "additionalProperties": {
+                "oneOf": [
+                    { "type": "string" },
+                    { "type": "string", "format": "binary" }
+                ]
+            }
         };
     };
 
@@ -332,7 +337,7 @@ fn default_content_schema(media_type: &str) -> anyhow::Result<&'static Schema> {
         MediaClass::PlainText => &SCHEMA_PLAIN_STRING,
         MediaClass::OpaqueBytes => &SCHEMA_BINARY_STRING,
         MediaClass::FormUrlEncoded => &SCHEMA_STRING_RECORD,
-        MediaClass::MultipartForm => &SCHEMA_ANYTHING_RECORD,
+        MediaClass::MultipartForm => &SCHEMA_MULTIPART_RECORD,
         MediaClass::Unknown(other) => anyhow::bail!("unknown media type with no schema: {other}"),
     };
 
