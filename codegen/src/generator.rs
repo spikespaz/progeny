@@ -3,7 +3,10 @@ use std::rc::Rc;
 use std::str::FromStr;
 
 use indexmap::{IndexMap, IndexSet};
-use openapiv3::{Content, OpenAPI, Parameter, ParameterSchemaOrContent as ParameterFormat, Schema};
+use openapiv3::{
+    Content, MediaType as ContentObject, OpenAPI, Parameter,
+    ParameterSchemaOrContent as ParameterFormat, Schema,
+};
 use proc_macro2::TokenStream;
 use quote::{ToTokens, format_ident, quote};
 
@@ -275,22 +278,30 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
         for (media_type, object) in content {
             let media_type = media_type.as_str();
 
-            let (type_id, schema) = if let Some(ref_or) = &object.schema {
-                let (component_id, schema) = self.resolver.resolve(ref_or)?;
-                let type_id = self.state.types.intern_schema(component_id, &schema)?;
-
-                (type_id, schema)
-            } else {
-                let schema = default_content_schema(media_type)?;
-                let type_id = self.state.types.add_schema(schema).unwrap();
-
-                (type_id, Rc::new(schema.clone()))
-            };
+            let (type_id, schema) = self.intern_content_schema(media_type, object)?;
 
             content_schemas.insert(media_type, (type_id, schema));
         }
 
         Ok(content_schemas)
+    }
+
+    fn intern_content_schema(
+        &mut self,
+        media_type: &str,
+        object: &ContentObject,
+    ) -> anyhow::Result<(TypeId, Rc<Schema>)> {
+        if let Some(ref_or) = &object.schema {
+            let (component_id, schema) = self.resolver.resolve(ref_or)?;
+            let type_id = self.state.types.intern_schema(component_id, &schema)?;
+
+            Ok((type_id, schema))
+        } else {
+            let schema = default_content_schema(media_type)?;
+            let type_id = self.state.types.add_schema(schema).unwrap();
+
+            Ok((type_id, Rc::new(schema.clone())))
+        }
     }
 }
 
