@@ -330,7 +330,7 @@ fn rank_media_type(
     index: usize,
     preference: &[MediaClass],
 ) -> impl Ord + use<> {
-    use crate::macros::media_type as new;
+    use mediatype::media_type as new;
 
     let media_class = MediaClass::from(media_type);
     let essence = media_type.essence();
@@ -412,9 +412,8 @@ pub enum MediaClass {
 
 impl From<&MediaType<'_>> for MediaClass {
     fn from(other: &MediaType) -> Self {
+        use mediatype::media_type as new;
         use mediatype::names::*;
-
-        use crate::macros::media_type as new;
 
         let essence = other.essence();
 

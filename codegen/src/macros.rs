@@ -45,21 +45,3 @@ macro_rules! __static_json {
         )*
     }
 }
-
-/// Construct a constant [`MediaType`][mediatype::MediaType].
-///
-/// This simply forwards tokens to [`mediatype::media_type`],
-/// but wraps the invocation in a `const` block.
-///
-/// It can be removed when [PR#24] is merged, if ever.
-///
-/// [PR#24]: https://github.com/picoHz/mediatype/pull/24
-#[doc(inline)]
-pub use crate::__media_type as media_type;
-
-// <https://github.com/picoHz/mediatype/pull/24>
-#[doc(hidden)]
-#[macro_export]
-macro_rules! __media_type {
-    ($($tt:tt)+) => { const { mediatype::media_type!($($tt)+) } }
-}
