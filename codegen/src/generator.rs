@@ -1,6 +1,5 @@
 use std::borrow::Cow;
 use std::rc::Rc;
-use std::str::FromStr;
 
 use indexmap::{IndexMap, IndexSet};
 use mediatype::MediaType;
@@ -183,7 +182,10 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
                                     param_data.name
                                 );
                             };
-                            self.intern_content_schema(media_type, object)?
+                            let media_type = MediaType::parse(media_type).map_err(|e| {
+                                anyhow::anyhow!("invalid media type '{media_type}': {e}")
+                            })?;
+                            self.intern_content_schema(&media_type, object)?
                         }
                     };
 
@@ -251,9 +253,7 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
                         );
                     };
 
-                    // TODO: Pass `media_type` verbatim.
-                    let (type_id, schema) =
-                        self.intern_content_schema(&media_type.to_string(), object)?;
+                    let (type_id, schema) = self.intern_content_schema(&media_type, object)?;
 
                     let arg_type = {
                         let schema_title = &schema.schema_data.title;
@@ -298,7 +298,7 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
 
     fn intern_content_schema(
         &mut self,
-        media_type: &str,
+        media_type: &MediaType<'_>,
         object: &ContentObject,
     ) -> anyhow::Result<(TypeId, Rc<Schema>)> {
         if let Some(ref_or) = &object.schema {
@@ -307,7 +307,7 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
 
             Ok((type_id, schema))
         } else {
-            let schema = default_content_schema(media_type)?;
+            let schema = default_content_schema(&media_type)?;
             let type_id = self.state.types.add_schema(schema).unwrap();
 
             Ok((type_id, Rc::new(schema.clone())))
@@ -332,9 +332,8 @@ fn rank_media_type(
 ) -> impl Ord + use<> {
     use crate::macros::media_type as new;
 
+    let media_class = MediaClass::from(media_type);
     let essence = media_type.essence();
-    // TODO: Don't parse twice.
-    let media_class = MediaClass::from_str(&essence.to_string()).expect("already parsed");
 
     let base_ord = preference
         .iter()
@@ -355,7 +354,7 @@ fn rank_media_type(
     (base_ord, tie_break, params_len, index)
 }
 
-fn default_content_schema(media_type: &str) -> anyhow::Result<&'static Schema> {
+fn default_content_schema(media_type: &MediaType<'_>) -> anyhow::Result<&'static Schema> {
     static_json! {
         static SCHEMA_ANYTHING: Schema = {};
         static SCHEMA_PLAIN_STRING: Schema = {
@@ -380,10 +379,7 @@ fn default_content_schema(media_type: &str) -> anyhow::Result<&'static Schema> {
         };
     };
 
-    let media_class = MediaClass::from_str(media_type)
-        .map_err(|e| anyhow::anyhow!("invalid media type '{media_type}': {e}"))?;
-
-    let schema = match media_class {
+    let schema = match MediaClass::from(media_type) {
         MediaClass::Json => &SCHEMA_ANYTHING,
         MediaClass::PlainText => &SCHEMA_PLAIN_STRING,
         MediaClass::OpaqueBytes => &SCHEMA_BINARY_STRING,
@@ -414,35 +410,29 @@ pub enum MediaClass {
     Unknown,
 }
 
-impl FromStr for MediaClass {
-    type Err = mediatype::MediaTypeError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        use mediatype::MediaType;
+impl From<&MediaType<'_>> for MediaClass {
+    fn from(other: &MediaType) -> Self {
         use mediatype::names::*;
 
         use crate::macros::media_type as new;
 
-        let media_type = MediaType::parse(s)?;
-        let media_type = media_type.essence();
+        let essence = other.essence();
 
-        let class = if media_type == new!(APPLICATION / JSON)
-            || media_type == new!(TEXT / JSON)
-            || media_type.suffix == Some(JSON)
+        if essence == new!(APPLICATION / JSON)
+            || essence == new!(TEXT / JSON)
+            || essence.suffix == Some(JSON)
         {
             Self::Json
-        } else if media_type == new!(TEXT / PLAIN) {
+        } else if essence == new!(TEXT / PLAIN) {
             Self::PlainText
-        } else if media_type == new!(APPLICATION / OCTET_STREAM) {
+        } else if essence == new!(APPLICATION / OCTET_STREAM) {
             Self::OpaqueBytes
-        } else if media_type == new!(APPLICATION / x_::WWW_FORM_URLENCODED) {
+        } else if essence == new!(APPLICATION / x_::WWW_FORM_URLENCODED) {
             Self::FormUrlEncoded
-        } else if media_type == new!(MULTIPART / FORM_DATA) {
+        } else if essence == new!(MULTIPART / FORM_DATA) {
             Self::MultipartForm
         } else {
             Self::Unknown
-        };
-
-        Ok(class)
+        }
     }
 }
