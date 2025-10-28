@@ -4,8 +4,8 @@ use std::str::FromStr;
 
 use indexmap::{IndexMap, IndexSet};
 use openapiv3::{
-    Content, MediaType as ContentObject, OpenAPI, Parameter,
-    ParameterSchemaOrContent as ParameterFormat, Schema,
+    MediaType as ContentObject, OpenAPI, Parameter, ParameterSchemaOrContent as ParameterFormat,
+    Schema,
 };
 use proc_macro2::TokenStream;
 use quote::{ToTokens, format_ident, quote};
@@ -159,17 +159,15 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
                             (type_id, schema)
                         }
                         ParameterFormat::Content(content) => {
-                            let content_schemas = self.intern_content_schemas(content)?;
-                            let (1, Some((_media_type, (type_id, schema)))) =
-                                (content_schemas.len(), content_schemas.into_iter().next())
+                            let (1, Some((media_type, object))) =
+                                (content.len(), content.into_iter().next())
                             else {
                                 anyhow::bail!(
                                     "parameter '{}' must have exactly one content type",
                                     param_data.name
                                 );
                             };
-
-                            (type_id, schema)
+                            self.intern_content_schema(media_type, object)?
                         }
                     };
 
@@ -221,12 +219,12 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
                     // TODO: Proper conflict resolution.
                     let arg_name = format_ident!("{method}_body");
 
-                    let content_schemas = self.intern_content_schemas(&body.content)?;
-
-                    let Some(&(type_id, ref schema)) = content_schemas.get("application/json")
-                    else {
-                        todo!("only 'application/json' bodies supported for now")
-                    };
+                    let (type_id, schema) =
+                        if let Some(object) = body.content.get("application/json") {
+                            self.intern_content_schema("application/json", object)?
+                        } else {
+                            todo!("only 'application/json' bodies supported for now")
+                        };
 
                     let arg_type = {
                         let schema_title = &schema.schema_data.title;
@@ -267,23 +265,6 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
             settings: self.settings,
             resolver: self.resolver,
         })
-    }
-
-    fn intern_content_schemas<'a>(
-        &mut self,
-        content: &'a Content,
-    ) -> anyhow::Result<IndexMap<&'a str, (TypeId, Rc<Schema>)>> {
-        let mut content_schemas = IndexMap::new();
-
-        for (media_type, object) in content {
-            let media_type = media_type.as_str();
-
-            let (type_id, schema) = self.intern_content_schema(media_type, object)?;
-
-            content_schemas.insert(media_type, (type_id, schema));
-        }
-
-        Ok(content_schemas)
     }
 
     fn intern_content_schema(
