@@ -203,6 +203,8 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
                         self.state.type_names.set_canonical(type_id, alias_name);
                     }
 
+                    self.visit_type(type_id);
+
                     let arg_type = self.render_type(type_id, Some(alias_name));
                     let arg_type = if !param_data.required {
                         quote!(::core::option::Option<#arg_type>)
@@ -276,6 +278,8 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
                         self.state.type_names.set_canonical(type_id, alias_name);
                     }
 
+                    self.visit_type(type_id);
+
                     let arg_type = self.render_type(type_id, Some(alias_name));
                     let arg_type = if !body.required {
                         quote!(::core::option::Option<#arg_type>)
@@ -302,11 +306,6 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
 
         for type_id in needed_types {
             let canon_ident = self.state.type_names.ident_for(type_id);
-
-            self.state.type_defs.insert(type_id, parse_quote! {
-                pub struct #canon_ident {}
-            });
-
             for alias in self.state.type_names.aliases_for(type_id) {
                 self.state.alias_defs.push(parse_quote! {
                     pub type #alias = #canon_ident;
@@ -353,6 +352,100 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
 
             Ok((type_id, Rc::new(schema.clone())))
         }
+    }
+
+    fn is_type_inline(&self, id: TypeId) -> bool {
+        matches!(
+            self.state.types.get_by_id(id),
+            TypeKind::Anything
+                | TypeKind::Scalar(_)
+                | TypeKind::Sequence(Sequence::List { .. })
+                | TypeKind::Sequence(Sequence::Exactly { unique: false, .. })
+                | TypeKind::Nullable(_)
+                | TypeKind::Uninhabited
+        )
+    }
+
+    fn visit_type(&mut self, id: TypeId) {
+        // TODO: Prevent clone without requiring partial borrow.
+        let type_kind = self.state.types.get_by_id(id).clone();
+        // TODO: Branches with unused variables have stand-in output to keep
+        // the examples compiling.
+        let type_def = match type_kind {
+            TypeKind::Anything => return,
+            TypeKind::Scalar(_) => return,
+            TypeKind::Record(record) => {
+                let canon_ident = self.ensure_canon_type_ident(id);
+                parse_quote! {
+                    pub struct #canon_ident {}
+                }
+            }
+            TypeKind::Sequence(sequence) => {
+                self.visit_type(sequence.items_type());
+                match sequence {
+                    Sequence::Exactly {
+                        items,
+                        count,
+                        unique: true,
+                    } => {
+                        let canon_ident = self.ensure_canon_type_ident(id);
+                        parse_quote! {
+                            pub struct #canon_ident {}
+                        }
+                    }
+                    Sequence::Bounded {
+                        items,
+                        min_items,
+                        max_items,
+                        unique,
+                    } => {
+                        let canon_ident = self.ensure_canon_type_ident(id);
+                        parse_quote! {
+                            pub struct #canon_ident {}
+                        }
+                    }
+                    // Anything else is inlined by `render_type`.
+                    _ => return,
+                }
+            }
+            TypeKind::Refinement(refinement) => {
+                let canon_ident = self.ensure_canon_type_ident(id);
+                parse_quote! {
+                    pub struct #canon_ident {}
+                }
+            }
+            TypeKind::Nullable(inner_id) => {
+                self.visit_type(inner_id);
+                return;
+            }
+            TypeKind::Coproduct(type_ids) => {
+                let canon_ident = self.ensure_canon_type_ident(id);
+                parse_quote! {
+                    pub struct #canon_ident {}
+                }
+            }
+            TypeKind::Intersection(type_ids) => {
+                let canon_ident = self.ensure_canon_type_ident(id);
+                parse_quote! {
+                    pub struct #canon_ident {}
+                }
+            }
+            TypeKind::Union(type_ids) => {
+                let canon_ident = self.ensure_canon_type_ident(id);
+                parse_quote! {
+                    pub struct #canon_ident {}
+                }
+            }
+            TypeKind::Complement(type_id) => {
+                let canon_ident = self.ensure_canon_type_ident(id);
+                parse_quote! {
+                    pub struct #canon_ident {}
+                }
+            }
+            TypeKind::Uninhabited => return,
+        };
+
+        self.state.type_defs.insert(id, type_def);
     }
 
     /// Render the Rust type for a given `TypeId` for use in a function signature
@@ -412,8 +505,8 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
 
     fn ensure_canon_type_ident(&mut self, id: TypeId) -> syn::Ident {
         debug_assert!(
-            !self.type_requires_def(id),
-            "ensure_canon_type_ident called for a type with no structural definition"
+            !self.is_type_inline(id),
+            "ensure_canon_type_ident called for an inline/structural type"
         );
 
         if let Some(existing) = self.state.type_names.ident_for(id) {
@@ -447,18 +540,6 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
         // TODO: This could be fancier and synthesize a more descriptive name
         // by the `TypeKind`.
         self.state.type_names.set_canonical(id, "Schema")
-    }
-
-    fn type_requires_def(&self, id: TypeId) -> bool {
-        matches!(
-            self.state.types.get_by_id(id),
-            TypeKind::Anything
-                | TypeKind::Scalar(_)
-                | TypeKind::Sequence(Sequence::List { .. })
-                | TypeKind::Sequence(Sequence::Exactly { unique: false, .. })
-                | TypeKind::Nullable(_)
-                | TypeKind::Uninhabited
-        )
     }
 }
 
