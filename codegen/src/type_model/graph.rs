@@ -133,6 +133,14 @@ impl<'doc> TypeGraph<'doc> {
         Some((type_id, type_kind))
     }
 
+    /// If the given type came from a schema, return the resolver's associated component.
+    pub fn get_component(&self, type_id: TypeId) -> Option<ComponentId> {
+        // TODO: This is currently O(N), decrease cost with bijection.
+        self.by_component
+            .iter()
+            .find_map(|(component_id, &id)| (id == type_id).then_some(component_id))
+    }
+
     pub fn add_string_type(&mut self, string_type: &StringType) -> TypeId {
         let &StringType {
             ref format,
