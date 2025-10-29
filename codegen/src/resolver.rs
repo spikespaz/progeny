@@ -225,6 +225,23 @@ impl<'doc> ReferenceResolver<'doc> {
         Ok((id, handle))
     }
 
+    pub fn get_object<O>(&self, id: ComponentId) -> Result<Rc<O>, Error>
+    where
+        O: ComponentObject,
+    {
+        let mut state = self.state.borrow_mut();
+        let component = state.cache.get_mut(id).unwrap();
+        component.promote::<O>().map_err(|e| Error::Deserialize {
+            reference: format!("{id:?}"),
+            source: e,
+        })?;
+        component.handle().ok_or_else(|| Error::TypeMismatch {
+            reference: format!("{id:?}"),
+            found: component.kind(),
+            expected: std::any::type_name::<O>(),
+        })
+    }
+
     /// Private, bypasses the cache.
     fn resolve_<O>(
         reference: &str,
