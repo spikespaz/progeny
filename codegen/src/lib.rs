@@ -6,6 +6,7 @@ pub mod type_model;
 pub mod type_names;
 
 mod into_cow;
+mod openapi_ext;
 
 pub use self::generator::{Generator, Settings};
 pub(crate) use crate::__sealed::Sealed;
