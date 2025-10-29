@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::ops::Deref;
 use std::rc::Rc;
 
+use indexmap::IndexSet;
 use openapiv3::{Components, OpenAPI, ReferenceOr};
 use percent_encoding::percent_decode_str;
 use slotmap::{SecondaryMap, SlotMap, new_key_type};
@@ -85,7 +86,7 @@ enum Component {
 #[derive(Debug, Default)]
 struct ComponentMeta {
     /// All references that point to this component.
-    references: Vec<String>,
+    references: IndexSet<String>,
 }
 
 impl<'doc> ReferenceResolver<'doc> {
@@ -149,7 +150,7 @@ impl<'doc> ReferenceResolver<'doc> {
                     let mut state = self.state.borrow_mut();
 
                     let meta = state.get_meta_mut(id);
-                    meta.references.push(synth_ref.clone());
+                    meta.references.insert(synth_ref.clone());
 
                     state.references.insert(synth_ref, id);
 
@@ -219,7 +220,8 @@ impl<'doc> ReferenceResolver<'doc> {
             (id, handle)
         };
 
-        state.get_meta_mut(id).references.push(reference.to_owned());
+        let meta = state.get_meta_mut(id);
+        meta.references.insert(reference.to_owned());
         state.references.insert(reference.to_owned(), id);
 
         Ok((id, handle))
