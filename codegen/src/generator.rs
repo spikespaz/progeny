@@ -307,7 +307,7 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
 
             Ok((type_id, schema))
         } else {
-            let schema = default_content_schema(&media_type)?;
+            let schema = default_content_schema(media_type)?;
             let type_id = self.state.types.add_schema(schema).unwrap();
 
             Ok((type_id, Rc::new(schema.clone())))
