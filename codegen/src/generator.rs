@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 use std::rc::Rc;
 
+use indexmap::IndexSet;
 use mediatype::MediaType;
 use openapiv3::{
     MediaType as ContentObject, OpenAPI, Parameter, ParameterSchemaOrContent as ParameterFormat,
@@ -140,6 +141,8 @@ impl<'cx> Generator<'cx, Building> {
 
 impl<'cx> Generator<'cx, Prepared<'cx>> {
     pub fn run(mut self) -> anyhow::Result<Generator<'cx, Finished<'cx>>> {
+        let mut needed_types = IndexSet::new();
+
         for (template, path) in &self.spec.paths.paths {
             let (_, path) = self.resolver.resolve(path)?;
             for (method, op) in path.iter() {
@@ -211,6 +214,7 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
                             parameter_data: _,
                             style,
                         } => {
+                            needed_types.insert(type_id);
                             path_args.push(quote!(#arg_name: #arg_type));
                         }
                         Parameter::Query {
@@ -219,6 +223,7 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
                             style,
                             allow_empty_value,
                         } => {
+                            needed_types.insert(type_id);
                             query_args.push(quote!(#arg_name: #arg_type));
                         }
                         Parameter::Header {
@@ -277,6 +282,7 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
                         type_ident.into_token_stream()
                     };
 
+                    needed_types.insert(type_id);
                     body_arg = Some(quote!(#arg_name: #arg_type));
                 }
 
@@ -289,6 +295,20 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
                     pub fn #fn_name(#(#fn_args,)*) {
                         todo!()
                     }
+                });
+            }
+        }
+
+        for type_id in needed_types {
+            let canon_ident = self.state.type_names.ident_for(type_id);
+
+            self.state.type_defs.insert(type_id, parse_quote! {
+                pub struct #canon_ident {}
+            });
+
+            for alias in self.state.type_names.aliases_for(type_id) {
+                self.state.alias_defs.push(parse_quote! {
+                    pub type #alias = #canon_ident;
                 });
             }
         }
