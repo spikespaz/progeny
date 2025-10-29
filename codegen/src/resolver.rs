@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::cell::RefCell;
+use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::rc::Rc;
@@ -84,9 +84,9 @@ enum Component {
 }
 
 #[derive(Debug, Default)]
-struct ComponentMeta {
+pub struct ComponentMeta {
     /// All references that point to this component.
-    references: IndexSet<String>,
+    pub references: IndexSet<String>,
 }
 
 impl<'doc> ReferenceResolver<'doc> {
@@ -242,6 +242,10 @@ impl<'doc> ReferenceResolver<'doc> {
             found: component.kind(),
             expected: std::any::type_name::<O>(),
         })
+    }
+
+    pub fn get_meta(&self, id: ComponentId) -> Option<Ref<'_, ComponentMeta>> {
+        Ref::filter_map(self.state.borrow(), |state| state.meta.get(id)).ok()
     }
 
     /// Private, bypasses the cache.
