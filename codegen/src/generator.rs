@@ -13,8 +13,9 @@ use syn::parse_quote;
 
 use self::stage::{Building, Finished, Prepared};
 use crate::IntoCow;
-use crate::formatting::to_snake_ident;
+use crate::formatting::{name_from_reference, to_snake_ident};
 use crate::macros::static_json;
+use crate::openapi_ext::ReferenceOrExt as _;
 use crate::resolver::ReferenceResolver;
 use crate::type_model::{TypeGraph, TypeId};
 use crate::type_names::TypeNameTable;
@@ -161,12 +162,12 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
 
                     let arg_name = to_snake_ident(&param_data.name);
 
-                    let (type_id, schema) = match &param_data.format {
+                    let (type_id, reference, schema) = match &param_data.format {
                         ParameterFormat::Schema(ref_or) => {
                             let (component_id, schema) = self.resolver.resolve(ref_or)?;
                             let type_id = self.state.types.intern_schema(component_id, &schema)?;
 
-                            (type_id, schema)
+                            (type_id, ref_or.as_reference(), schema)
                         }
                         ParameterFormat::Content(content) => {
                             let (1, Some((media_type, object))) =
@@ -183,14 +184,16 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
                             let (type_id, schema) =
                                 self.intern_content_schema(&media_type, object)?;
 
-                            (type_id, schema)
+                            (type_id, None, schema)
                         }
                     };
 
                     let schema_title = schema.schema_data.title.as_deref();
+                    let reference_name = || reference.map(|s| name_from_reference(s).unwrap());
+                    let canon_name = schema_title.map(Cow::Borrowed).or_else(reference_name);
                     let alias_name = &param_data.name;
 
-                    let type_ident = if let Some(name) = schema_title {
+                    let type_ident = if let Some(name) = canon_name {
                         self.state.type_names.set_canonical(type_id, name);
                         self.state.type_names.insert_alias(type_id, alias_name)
                     } else {
@@ -254,11 +257,14 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
                     };
 
                     let (type_id, schema) = self.intern_content_schema(&media_type, object)?;
+                    let reference = ref_or.as_reference();
 
                     let schema_title = schema.schema_data.title.as_deref();
+                    let reference_name = || reference.map(|s| name_from_reference(s).unwrap());
+                    let canon_name = schema_title.map(Cow::Borrowed).or_else(reference_name);
                     let alias_name = &op_name;
 
-                    let type_ident = if let Some(name) = schema_title {
+                    let type_ident = if let Some(name) = canon_name {
                         self.state.type_names.set_canonical(type_id, name);
                         self.state.type_names.insert_alias(type_id, alias_name)
                     } else {
