@@ -9,6 +9,8 @@ use openapiv3::{
 };
 use proc_macro2::TokenStream;
 use quote::{ToTokens, format_ident, quote};
+use slotmap::SecondaryMap;
+use syn::parse_quote;
 
 use self::stage::{Building, Finished, Prepared};
 use crate::IntoCow;
@@ -40,8 +42,9 @@ impl Default for Settings {
 
 pub mod stage {
     use proc_macro2::TokenStream;
+    use slotmap::SecondaryMap;
 
-    use crate::type_model::TypeGraph;
+    use crate::type_model::{TypeGraph, TypeId};
 
     pub trait GeneratorStage: crate::Sealed {}
 
@@ -53,7 +56,9 @@ pub mod stage {
     /// and is ready to produce tokens.
     pub struct Prepared<'cx> {
         pub(crate) types: TypeGraph<'cx>,
-        pub(crate) tokens: TokenStream,
+        pub(crate) type_defs: SecondaryMap<TypeId, syn::Item>,
+        pub(crate) alias_defs: Vec<syn::ItemType>,
+        pub(crate) fn_defs: Vec<syn::ItemFn>,
     }
 
     /// The [`Generator`][super::Generator] has tokens ready for ingestion.
@@ -118,7 +123,9 @@ impl<'cx> Generator<'cx, Building> {
         Generator {
             state: Prepared {
                 types,
-                tokens: TokenStream::new(),
+                type_defs: SecondaryMap::new(),
+                alias_defs: Vec::new(),
+                fn_defs: Vec::new(),
             },
             spec: self.spec,
             settings: self.settings,
@@ -277,7 +284,7 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
                     .chain(query_args)
                     .chain(body_arg);
 
-                self.state.tokens.extend(quote! {
+                self.state.fn_defs.push(parse_quote! {
                     pub fn #fn_name(#(#fn_args,)*) {
                         todo!()
                     }
@@ -285,10 +292,22 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
             }
         }
 
+        let tokens = {
+            let type_defs = self.state.type_defs.values();
+            let alias_defs = self.state.alias_defs;
+            let fn_defs = self.state.fn_defs;
+
+            quote! {
+                #(#type_defs)*
+                #(#alias_defs)*
+                #(#fn_defs)*
+            }
+        };
+
         Ok(Generator {
             state: Finished {
                 types: self.state.types,
-                tokens: self.state.tokens,
+                tokens,
             },
             spec: self.spec,
             settings: self.settings,
