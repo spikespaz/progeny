@@ -3,6 +3,7 @@ pub mod generator;
 pub mod macros;
 pub mod resolver;
 pub mod type_model;
+pub mod type_names;
 
 mod into_cow;
 
