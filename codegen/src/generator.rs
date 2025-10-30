@@ -18,7 +18,8 @@ use crate::formatting::{name_from_reference, to_snake_ident};
 use crate::macros::static_json;
 use crate::openapi_ext::ReferenceOrExt as _;
 use crate::resolver::ReferenceResolver;
-use crate::type_model::{TypeGraph, TypeId};
+use crate::type_model::kinds::{FloatKind, IntegerKind, Scalar, Sequence};
+use crate::type_model::{TypeGraph, TypeId, TypeKind};
 use crate::type_names::TypeNameTable;
 
 #[derive(Debug)]
@@ -196,17 +197,17 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
                     let canon_name = schema_title.map(Cow::Borrowed).or_else(reference_name);
                     let alias_name = &param_data.name;
 
-                    let type_ident = if let Some(name) = canon_name {
+                    if let Some(name) = canon_name {
                         self.state.type_names.set_canonical(type_id, name);
-                        self.state.type_names.insert_alias(type_id, alias_name)
                     } else {
-                        self.state.type_names.set_canonical(type_id, alias_name)
-                    };
+                        self.state.type_names.set_canonical(type_id, alias_name);
+                    }
 
+                    let arg_type = self.render_type(type_id, Some(alias_name));
                     let arg_type = if !param_data.required {
-                        quote!(::core::option::Option<#type_ident>)
+                        quote!(::core::option::Option<#arg_type>)
                     } else {
-                        type_ident.into_token_stream()
+                        arg_type.into_token_stream()
                     };
 
                     match &*param {
@@ -269,17 +270,17 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
                     let canon_name = schema_title.map(Cow::Borrowed).or_else(reference_name);
                     let alias_name = &op_name;
 
-                    let type_ident = if let Some(name) = canon_name {
+                    if let Some(name) = canon_name {
                         self.state.type_names.set_canonical(type_id, name);
-                        self.state.type_names.insert_alias(type_id, alias_name)
                     } else {
-                        self.state.type_names.set_canonical(type_id, alias_name)
-                    };
+                        self.state.type_names.set_canonical(type_id, alias_name);
+                    }
 
+                    let arg_type = self.render_type(type_id, Some(alias_name));
                     let arg_type = if !body.required {
-                        quote!(::core::option::Option<#type_ident>)
+                        quote!(::core::option::Option<#arg_type>)
                     } else {
-                        type_ident.into_token_stream()
+                        arg_type.into_token_stream()
                     };
 
                     needed_types.insert(type_id);
@@ -351,6 +352,76 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
             let type_id = self.state.types.add_schema(schema).unwrap();
 
             Ok((type_id, Rc::new(schema.clone())))
+        }
+    }
+
+    /// Render the Rust type for a given `TypeId` for use in a function signature
+    /// or product type field.
+    ///
+    /// This will try to inline simple shapes (scalars, lists, etc.).
+    /// For complex shapes that must be defined as their own named item
+    /// (`struct` or `enum`), this returns an identifier.
+    ///
+    /// The optional `alias` is used in two ways, when provided:
+    /// - If the type is [`TypeKind::Nullable`], the `alias` is used for the generic of `Option`.
+    /// - If the type **cannot** be represented inline, the alias will be registered
+    ///   as an alias for this `TypeId` and returned as a [`syn::Type`].
+    ///
+    /// If the [`TypeKind`] can be represented structurally, instead of requiring
+    /// a definition item, it will be produced with no alias registration.
+    fn render_type(&mut self, id: TypeId, alias: Option<&str>) -> syn::Type {
+        match *self.state.types.get_by_id(id) {
+            TypeKind::Anything => parse_quote!(::serde_json::Value),
+            TypeKind::Scalar(scalar) => match scalar {
+                Scalar::String => parse_quote!(::std::string::String),
+                Scalar::Float(FloatKind::F32) => parse_quote!(f32),
+                Scalar::Float(FloatKind::F64) => parse_quote!(f64),
+                Scalar::Integer(IntegerKind::U8) => parse_quote!(u8),
+                Scalar::Integer(IntegerKind::U16) => parse_quote!(u16),
+                Scalar::Integer(IntegerKind::U32) => parse_quote!(u32),
+                Scalar::Integer(IntegerKind::U64) => parse_quote!(u64),
+                Scalar::Integer(IntegerKind::U128) => parse_quote!(u128),
+                Scalar::Integer(IntegerKind::I8) => parse_quote!(i8),
+                Scalar::Integer(IntegerKind::I16) => parse_quote!(i16),
+                Scalar::Integer(IntegerKind::I32) => parse_quote!(i32),
+                Scalar::Integer(IntegerKind::I64) => parse_quote!(i64),
+                Scalar::Integer(IntegerKind::I128) => parse_quote!(i128),
+                Scalar::Boolean => parse_quote!(bool),
+            },
+            TypeKind::Sequence(Sequence::List { items, unique }) => {
+                let item_ty = self.render_type(items, None);
+                if unique {
+                    parse_quote!(::indexmap::IndexSet<#item_ty>)
+                } else {
+                    parse_quote!(::std::vec::Vec<#item_ty>)
+                }
+            }
+            TypeKind::Sequence(Sequence::Exactly {
+                items,
+                count,
+                unique: false,
+            }) => {
+                let item_ty = self.render_type(items, None);
+                parse_quote!([#item_ty; #count])
+            }
+            TypeKind::Nullable(inner_id) => {
+                let inner_ty = self.render_type(inner_id, alias);
+                parse_quote!(::core::option::Option<#inner_ty>)
+            }
+            TypeKind::Uninhabited => parse_quote!(!),
+            _ => {
+                // TODO: For types which are recursed to, but have not been assigned
+                // a canonical identifier elsewhere, discover the original reference
+                // from which they came, and derive a name from it.
+                // For inline/anonymous schemas, probably nested ones, a reference
+                // won't be available. In this event, synthesize some reasonable name,
+                // if it needs a definition.
+                let ident = alias
+                    .map(|name| self.state.type_names.insert_alias(id, name))
+                    .or_else(|| self.state.type_names.ident_for(id).cloned())
+                    .expect("render_type called for type without canonical name");
+                parse_quote!(#ident)
+            }
         }
     }
 }
