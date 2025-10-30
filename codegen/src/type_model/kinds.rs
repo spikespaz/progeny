@@ -267,6 +267,16 @@ impl_integer_kind! {
     (u128 => IntegerKind::U128);
 }
 
+impl Sequence {
+    pub fn items_type(&self) -> TypeId {
+        match *self {
+            Sequence::List { items, .. }
+            | Sequence::Exactly { items, .. }
+            | Sequence::Bounded { items, .. } => items,
+        }
+    }
+}
+
 const _: () = {
     use openapiv3::VariantOrUnknownOrEmpty;
 
