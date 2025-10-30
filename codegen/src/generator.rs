@@ -1,7 +1,6 @@
 use std::borrow::Cow;
 use std::rc::Rc;
 
-use indexmap::{IndexMap, IndexSet};
 use mediatype::MediaType;
 use openapiv3::{
     MediaType as ContentObject, OpenAPI, Parameter, ParameterSchemaOrContent as ParameterFormat,
@@ -14,10 +13,11 @@ use syn::parse_quote;
 
 use self::stage::{Building, Finished, Prepared};
 use crate::IntoCow;
-use crate::formatting::{to_snake_ident, to_type_ident};
+use crate::formatting::to_snake_ident;
 use crate::macros::static_json;
 use crate::resolver::ReferenceResolver;
 use crate::type_model::{TypeGraph, TypeId};
+use crate::type_names::TypeNameTable;
 
 #[derive(Debug)]
 pub struct Settings {
@@ -45,6 +45,7 @@ pub mod stage {
     use slotmap::SecondaryMap;
 
     use crate::type_model::{TypeGraph, TypeId};
+    use crate::type_names::TypeNameTable;
 
     pub trait GeneratorStage: crate::Sealed {}
 
@@ -56,6 +57,7 @@ pub mod stage {
     /// and is ready to produce tokens.
     pub struct Prepared<'cx> {
         pub(crate) types: TypeGraph<'cx>,
+        pub(crate) type_names: TypeNameTable,
         pub(crate) type_defs: SecondaryMap<TypeId, syn::Item>,
         pub(crate) alias_defs: Vec<syn::ItemType>,
         pub(crate) fn_defs: Vec<syn::ItemFn>,
@@ -123,6 +125,7 @@ impl<'cx> Generator<'cx, Building> {
         Generator {
             state: Prepared {
                 types,
+                type_names: TypeNameTable::default(),
                 type_defs: SecondaryMap::new(),
                 alias_defs: Vec::new(),
                 fn_defs: Vec::new(),
@@ -136,21 +139,6 @@ impl<'cx> Generator<'cx, Building> {
 
 impl<'cx> Generator<'cx, Prepared<'cx>> {
     pub fn run(mut self) -> anyhow::Result<Generator<'cx, Finished<'cx>>> {
-        let mut type_names = IndexMap::<TypeId, IndexSet<String>>::new();
-
-        let insert_type_alias = &mut |type_id, name| {
-            use indexmap::map::Entry;
-            match type_names.entry(type_id) {
-                Entry::Occupied(mut entry) => {
-                    entry.get_mut().insert(name);
-                }
-                Entry::Vacant(slot) => {
-                    let names = IndexSet::<_>::from_iter([name]);
-                    slot.insert(names);
-                }
-            }
-        };
-
         for (template, path) in &self.spec.paths.paths {
             let (_, path) = self.resolver.resolve(path)?;
             for (method, op) in path.iter() {
@@ -192,22 +180,27 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
                             let media_type = MediaType::parse(media_type).map_err(|e| {
                                 anyhow::anyhow!("invalid media type '{media_type}': {e}")
                             })?;
-                            self.intern_content_schema(&media_type, object)?
+                            let (type_id, schema) =
+                                self.intern_content_schema(&media_type, object)?;
+
+                            (type_id, schema)
                         }
                     };
 
-                    let arg_type = {
-                        let schema_title = schema.schema_data.title.as_deref();
-                        let name = schema_title.unwrap_or(param_data.name.as_str());
-                        let arg_type = to_type_ident(name).into_token_stream();
+                    let schema_title = schema.schema_data.title.as_deref();
+                    let alias_name = &param_data.name;
 
-                        insert_type_alias(type_id, arg_type.to_string());
+                    let type_ident = if let Some(name) = schema_title {
+                        self.state.type_names.set_canonical(type_id, name);
+                        self.state.type_names.insert_alias(type_id, alias_name)
+                    } else {
+                        self.state.type_names.set_canonical(type_id, alias_name)
+                    };
 
-                        if !param_data.required {
-                            quote!(::core::option::Option<#arg_type>)
-                        } else {
-                            arg_type
-                        }
+                    let arg_type = if !param_data.required {
+                        quote!(::core::option::Option<#type_ident>)
+                    } else {
+                        type_ident.into_token_stream()
                     };
 
                     match &*param {
@@ -238,8 +231,8 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
 
                 let mut body_arg = None;
 
-                if let Some(body) = &op.request_body {
-                    let (_, body) = self.resolver.resolve(body)?;
+                if let Some(ref_or) = &op.request_body {
+                    let (_, body) = self.resolver.resolve(ref_or)?;
 
                     // TODO: Proper conflict resolution.
                     let arg_name = format_ident!("{method}_body");
@@ -262,18 +255,20 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
 
                     let (type_id, schema) = self.intern_content_schema(&media_type, object)?;
 
-                    let arg_type = {
-                        let schema_title = &schema.schema_data.title;
-                        let name = schema_title.as_deref().unwrap_or(op_name.as_ref());
-                        let arg_type = to_type_ident(name).into_token_stream();
+                    let schema_title = schema.schema_data.title.as_deref();
+                    let alias_name = &op_name;
 
-                        insert_type_alias(type_id, arg_type.to_string());
+                    let type_ident = if let Some(name) = schema_title {
+                        self.state.type_names.set_canonical(type_id, name);
+                        self.state.type_names.insert_alias(type_id, alias_name)
+                    } else {
+                        self.state.type_names.set_canonical(type_id, alias_name)
+                    };
 
-                        if !body.required {
-                            quote!(::core::option::Option<#arg_type>)
-                        } else {
-                            arg_type
-                        }
+                    let arg_type = if !body.required {
+                        quote!(::core::option::Option<#type_ident>)
+                    } else {
+                        type_ident.into_token_stream()
                     };
 
                     body_arg = Some(quote!(#arg_name: #arg_type));
