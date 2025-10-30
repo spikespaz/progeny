@@ -372,22 +372,7 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
     fn render_type(&mut self, id: TypeId, alias: Option<&str>) -> syn::Type {
         match *self.state.types.get_by_id(id) {
             TypeKind::Anything => parse_quote!(::serde_json::Value),
-            TypeKind::Scalar(scalar) => match scalar {
-                Scalar::String => parse_quote!(::std::string::String),
-                Scalar::Float(FloatKind::F32) => parse_quote!(f32),
-                Scalar::Float(FloatKind::F64) => parse_quote!(f64),
-                Scalar::Integer(IntegerKind::U8) => parse_quote!(u8),
-                Scalar::Integer(IntegerKind::U16) => parse_quote!(u16),
-                Scalar::Integer(IntegerKind::U32) => parse_quote!(u32),
-                Scalar::Integer(IntegerKind::U64) => parse_quote!(u64),
-                Scalar::Integer(IntegerKind::U128) => parse_quote!(u128),
-                Scalar::Integer(IntegerKind::I8) => parse_quote!(i8),
-                Scalar::Integer(IntegerKind::I16) => parse_quote!(i16),
-                Scalar::Integer(IntegerKind::I32) => parse_quote!(i32),
-                Scalar::Integer(IntegerKind::I64) => parse_quote!(i64),
-                Scalar::Integer(IntegerKind::I128) => parse_quote!(i128),
-                Scalar::Boolean => parse_quote!(bool),
-            },
+            TypeKind::Scalar(scalar) => scalar_to_tokens(scalar),
             TypeKind::Sequence(Sequence::List { items, unique }) => {
                 let item_ty = self.render_type(items, None);
                 if unique {
@@ -544,5 +529,24 @@ impl From<&MediaType<'_>> for MediaClass {
         } else {
             Self::Unknown
         }
+    }
+}
+
+pub fn scalar_to_tokens(scalar: Scalar) -> syn::Type {
+    match scalar {
+        Scalar::String => parse_quote!(::std::string::String),
+        Scalar::Float(FloatKind::F32) => parse_quote!(f32),
+        Scalar::Float(FloatKind::F64) => parse_quote!(f64),
+        Scalar::Integer(IntegerKind::U8) => parse_quote!(u8),
+        Scalar::Integer(IntegerKind::U16) => parse_quote!(u16),
+        Scalar::Integer(IntegerKind::U32) => parse_quote!(u32),
+        Scalar::Integer(IntegerKind::U64) => parse_quote!(u64),
+        Scalar::Integer(IntegerKind::U128) => parse_quote!(u128),
+        Scalar::Integer(IntegerKind::I8) => parse_quote!(i8),
+        Scalar::Integer(IntegerKind::I16) => parse_quote!(i16),
+        Scalar::Integer(IntegerKind::I32) => parse_quote!(i32),
+        Scalar::Integer(IntegerKind::I64) => parse_quote!(i64),
+        Scalar::Integer(IntegerKind::I128) => parse_quote!(i128),
+        Scalar::Boolean => parse_quote!(bool),
     }
 }
