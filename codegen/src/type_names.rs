@@ -4,6 +4,7 @@ use indexmap::IndexSet;
 use quote::format_ident;
 use slotmap::SecondaryMap;
 
+use crate::formatting::to_type_ident;
 use crate::type_model::TypeId;
 
 #[derive(Debug, Default)]
@@ -50,5 +51,22 @@ impl TypeNameTable {
                 }
             }
         }
+    }
+
+    pub fn set_canonical(&mut self, id: TypeId, name: impl AsRef<str>) -> syn::Ident {
+        let new_ident = self.stable_ident_for(id, &to_type_ident(name));
+        self.canonical.insert(id, new_ident.clone());
+        new_ident
+    }
+
+    pub fn insert_alias(&mut self, id: TypeId, name: impl AsRef<str>) -> syn::Ident {
+        let new_ident = self.stable_ident_for(id, &to_type_ident(name));
+        // Do not create an alias if this type already has `new_ident` as the canon identifier.
+        // This relies on `stable_ident_for` early-exit in the event that this type already owns the name.
+        if self.ident_for(id) != Some(&new_ident) {
+            let aliases = self.aliases.entry(id).unwrap().or_default();
+            aliases.insert(new_ident.clone());
+        }
+        new_ident
     }
 }
