@@ -29,6 +29,7 @@ syn = { version = "2.0", default-features = false, features = [
     "printing",
 ] }
 thiserror = "2.0"
+unicode-ident = "1.0.22"
 
 [lints]
 workspace = true

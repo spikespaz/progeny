@@ -75,7 +75,19 @@ pub fn name_from_reference(reference: &str) -> Result<Cow<'_, str>, InferNameErr
 pub fn format_ident_safe(name: impl AsRef<str>, case: ConvertCase) -> syn::Ident {
     use check_keyword::CheckKeyword;
     use convert_case::{Boundary, Casing as _};
+    use unicode_ident::{is_xid_continue, is_xid_start};
 
+    const NON_XID_CONTINUE: Boundary = Boundary {
+        name: "NonXidContinue",
+        condition: |gs, _| {
+            gs.first()
+                .and_then(|g| g.chars().next())
+                .is_some_and(|ch| !is_xid_continue(ch))
+        },
+        arg: None,
+        start: 0, // boundary before char
+        len: 1,   // consume one char
+    };
     const NON_ALPHANUMERIC: Boundary = Boundary {
         name: "NonAlphanumeric",
         condition: |gs, _| {
@@ -100,6 +112,7 @@ pub fn format_ident_safe(name: impl AsRef<str>, case: ConvertCase) -> syn::Ident
         len: 0,   // consume nothing
     };
     const IDENT_WORD_BOUNDARIES: &[Boundary] = &[
+        NON_XID_CONTINUE,
         NON_ALPHANUMERIC,
         Boundary::LOWER_DIGIT,
         Boundary::UPPER_DIGIT,
@@ -114,7 +127,9 @@ pub fn format_ident_safe(name: impl AsRef<str>, case: ConvertCase) -> syn::Ident
         .with_boundaries(IDENT_WORD_BOUNDARIES)
         .to_case(case);
 
-    if name.starts_with(|c: char| !c.is_alphabetic()) {
+    let is_start_char = |ch| ch == '_' || is_xid_start(ch);
+
+    if name.starts_with(|ch: char| !is_start_char(ch)) {
         quote::format_ident!("_{name}")
     } else if name.is_keyword() {
         quote::format_ident!("{}", name.into_safe())
@@ -149,6 +164,7 @@ mod tests {
     #[test_case("123" => "_123" ; "leading digit underscore")]
     #[test_case("Self" => "Self_" ; "pascal keyword underscore")]
     #[test_case("_leading_underscore" => "LeadingUnderscore" ; "drop leading underscore")]
+    #[test_case("foo💥bar" => "FooBar" ; "non-XID-continue is boundary")]
     fn format_ident(input: &str) -> String {
         format_ident_safe(input, convert_case::Case::Pascal).to_string()
     }
