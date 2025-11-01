@@ -409,6 +409,57 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
             }
         }
     }
+
+    fn ensure_canon_type_ident(&mut self, id: TypeId) -> syn::Ident {
+        debug_assert!(
+            !self.type_requires_def(id),
+            "ensure_canon_type_ident called for a type with no structural definition"
+        );
+
+        if let Some(existing) = self.state.type_names.ident_for(id) {
+            return existing.clone();
+        }
+
+        let component_name = self.state.types.get_component(id).and_then(|component_id| {
+            let schema = self
+                .resolver
+                .get_object::<Schema>(component_id)
+                .expect("given TypeId must have come from a Schema");
+
+            if let Some(title) = schema.schema_data.title.as_deref() {
+                return Some(title.to_string());
+            }
+
+            let meta = self.resolver.get_meta(component_id)?;
+            let first_ref = meta.references.first()?;
+            let ref_name = name_from_reference(first_ref)
+                .expect("reference already resolved and must be valid")
+                .to_string();
+
+            Some(ref_name)
+        });
+
+        if let Some(name) = component_name {
+            return self.state.type_names.set_canonical(id, name);
+        }
+
+        // Absolute last resort for anonymous inline schemas (with no component).
+        // TODO: This could be fancier and synthesize a more descriptive name
+        // by the `TypeKind`.
+        self.state.type_names.set_canonical(id, "Schema")
+    }
+
+    fn type_requires_def(&self, id: TypeId) -> bool {
+        matches!(
+            self.state.types.get_by_id(id),
+            TypeKind::Anything
+                | TypeKind::Scalar(_)
+                | TypeKind::Sequence(Sequence::List { .. })
+                | TypeKind::Sequence(Sequence::Exactly { unique: false, .. })
+                | TypeKind::Nullable(_)
+                | TypeKind::Uninhabited
+        )
+    }
 }
 
 impl Generator<'_, Finished<'_>> {
