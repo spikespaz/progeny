@@ -29,6 +29,8 @@ pub struct Settings {
     /// Media type classifications to choose among a body [`Content`][openapiv3::Content]
     /// with multiple objects, in order of descending preference.
     pub content_preference: &'static [MediaClass],
+    /// Use `core::convert::Infallible` instead of the never type (`!`).
+    pub never_say_never: bool,
 }
 
 impl Default for Settings {
@@ -39,6 +41,7 @@ impl Default for Settings {
                 use MediaClass::*;
                 &[Json, FormUrlEncoded, MultipartForm, PlainText, OpaqueBytes]
             },
+            never_say_never: false,
         }
     }
 }
@@ -486,7 +489,13 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
                 let inner_ty = self.render_type(inner_id, alias);
                 parse_quote!(::core::option::Option<#inner_ty>)
             }
-            TypeKind::Uninhabited => parse_quote!(!),
+            TypeKind::Uninhabited => {
+                if self.settings.never_say_never {
+                    parse_quote!(::core::convert::Infallible)
+                } else {
+                    parse_quote!(!)
+                }
+            }
             _ => {
                 // TODO: For types which are recursed to, but have not been assigned
                 // a canonical identifier elsewhere, discover the original reference
