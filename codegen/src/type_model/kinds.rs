@@ -12,8 +12,8 @@ pub enum TypeKind {
     Sequence(Sequence),
     Refinement(Refinement),
     Nullable(TypeId),
-    Union(Vec<TypeId>),
-    Intersection(Vec<TypeId>),
+    Union(IndexSet<TypeId>),
+    Intersection(IndexSet<TypeId>),
     Complement(TypeId),
     Uninhabited,
 }
