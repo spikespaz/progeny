@@ -12,9 +12,8 @@ pub enum TypeKind {
     Sequence(Sequence),
     Refinement(Refinement),
     Nullable(TypeId),
-    Coproduct(Vec<TypeId>),
-    Intersection(Vec<TypeId>),
     Union(Vec<TypeId>),
+    Intersection(Vec<TypeId>),
     Complement(TypeId),
     Uninhabited,
 }

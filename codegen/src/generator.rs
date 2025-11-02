@@ -421,19 +421,13 @@ impl<'cx> Generator<'cx, Prepared<'cx>> {
                 self.visit_type(inner_id);
                 return;
             }
-            TypeKind::Coproduct(type_ids) => {
+            TypeKind::Union(type_ids) => {
                 let canon_ident = self.ensure_canon_type_ident(id);
                 parse_quote! {
                     pub struct #canon_ident {}
                 }
             }
             TypeKind::Intersection(type_ids) => {
-                let canon_ident = self.ensure_canon_type_ident(id);
-                parse_quote! {
-                    pub struct #canon_ident {}
-                }
-            }
-            TypeKind::Union(type_ids) => {
                 let canon_ident = self.ensure_canon_type_ident(id);
                 parse_quote! {
                     pub struct #canon_ident {}
