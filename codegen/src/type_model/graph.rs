@@ -2,8 +2,8 @@ use std::num::NonZeroU64;
 
 use indexmap::{IndexMap, IndexSet};
 use openapiv3::{
-    AdditionalProperties, AnySchema, ArrayType, BooleanType, IntegerType, ObjectType, Schema,
-    SchemaKind, StringType, Type,
+    AdditionalProperties, AnySchema, ArrayType, BooleanType, IntegerType, ObjectType, ReferenceOr,
+    Schema, SchemaKind, StringType, Type,
 };
 use slotmap::{SecondaryMap, SlotMap, new_key_type};
 
@@ -67,9 +67,9 @@ impl<'doc> TypeGraph<'doc> {
             SchemaKind::Type(Type::Object(object_type)) => self.add_object_type(object_type)?,
             SchemaKind::Type(Type::Array(array_type)) => self.add_array_type(array_type)?,
             SchemaKind::Type(Type::Boolean(boolean_type)) => self.add_boolean_type(boolean_type),
-            SchemaKind::OneOf { one_of: _ } => todo!(),
+            SchemaKind::OneOf { one_of } => self.add_union(one_of)?,
             SchemaKind::AllOf { all_of: _ } => todo!(),
-            SchemaKind::AnyOf { any_of: _ } => todo!(),
+            SchemaKind::AnyOf { any_of } => self.add_union(any_of)?,
             SchemaKind::Not { not: _ } => todo!(),
             SchemaKind::Any(any_schema) if any_schema == &AnySchema::default() => self.anything_id,
             SchemaKind::Any(any_schema) => {
@@ -426,6 +426,36 @@ impl<'doc> TypeGraph<'doc> {
         }
 
         self.insert(type_kind)
+    }
+
+    pub fn add_union(&mut self, alternates: &[ReferenceOr<Schema>]) -> Result<TypeId> {
+        if alternates.is_empty() {
+            return Ok(self.uninhabited_id);
+        }
+
+        let mut member_ids = IndexSet::with_capacity(alternates.len());
+
+        for ref_or in alternates {
+            let (component_id, schema) = self.resolver.resolve(ref_or)?;
+            let type_id = self.intern_schema(component_id, &schema)?;
+
+            match self.get_by_id(type_id) {
+                TypeKind::Anything => return Ok(self.anything_id),
+                TypeKind::Uninhabited => continue,
+                _ => _ = member_ids.insert(type_id),
+            }
+        }
+
+        if member_ids.is_empty() {
+            return Ok(self.uninhabited_id);
+        }
+
+        if member_ids.len() == 1 {
+            return Ok(member_ids.pop().unwrap());
+        }
+
+        // TODO: Normalize and widen types with similar kinds.
+        Ok(self.insert(TypeKind::Union(member_ids)))
     }
 }
 
